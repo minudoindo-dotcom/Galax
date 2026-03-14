@@ -3,6 +3,11 @@
 --         macOS style
 -- =============================================
 
+local Players = game:GetService("Players")
+while not Players.LocalPlayer do
+    task.wait(0.5)
+end
+
 local GAMES_URL        = "https://raw.githubusercontent.com/minudoindo-dotcom/Galax/refs/heads/main/FreeID.lua"
 
 local LOADER_TITLE     = "Galax Hub"
@@ -68,20 +73,33 @@ local function newCircle(props)
 end
 
 -- =============================================
--- FETCH GAME LIST FROM GITHUB
+-- FETCH GAME LIST FROM GITHUB (Protegido)
 -- =============================================
 GalaxHubGames = nil
+local SupportedGames = {}
 
 local ok, err = pcall(function()
-    local raw = game:HttpGet(GAMES_URL)
-    local fn  = loadstring(raw)
-    if fn then
-        fn()  -- sets the global GalaxHubGames
+    -- Bypass de cache para evitar string malformada/antiga
+    local urlBypass = GAMES_URL .. "?t=" .. tostring(os.time())
+    local raw = game:HttpGet(urlBypass)
+    
+    -- Impede de ler se o GitHub der erro 404 (Not Found)
+    if raw and raw ~= "" and not string.find(raw, "404: Not Found") then
+        local fn, compileErr = loadstring(raw)
+        if fn then
+            fn()  -- sets the global GalaxHubGames
+            SupportedGames = GalaxHubGames or {}
+        else
+            warn("[Galax Hub] Erro de compilação no GitHub: ", compileErr)
+        end
+    else
+        warn("[Galax Hub] Resposta inválida ou vazia do GitHub.")
     end
 end)
 
-local SupportedGames = GalaxHubGames or {}
-
+if not ok then
+    warn("[Galax Hub] Falha de conexão: ", err)
+end
 
 -- =============================================
 -- SETUP
@@ -333,6 +351,13 @@ appIcon:Remove(); appIconText:Remove(); titleDraw:Remove(); statusDraw:Remove();
 for _, p in ipairs(particles) do p:Remove() end
 
 -- =============================================
--- EXECUTE GAME SCRIPT
+-- EXECUTE GAME SCRIPT (Protegido)
 -- =============================================
-if foundScript then loadstring(foundScript)() end
+if foundScript then 
+    local ok, execErr = pcall(function()
+        loadstring(foundScript)()
+    end)
+    if not ok then
+        warn("[Galax Hub] Erro ao carregar o script do jogo: ", execErr)
+    end
+end
