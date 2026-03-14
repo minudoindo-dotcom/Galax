@@ -1,6 +1,6 @@
 GalaxHubGames = {
     {
-        ids = { "131334102981924" },
+        ids = { "9391468976", "17016840407" },
         script = [[loadstring(game:HttpGet("https://raw.githubusercontent.com/minudoindo-dotcom/Galax/refs/heads/main/Scripts/Free/Jujutsu.lua"))()]]
     }, -- Precisa de virgula viu
     {
