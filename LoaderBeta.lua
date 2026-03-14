@@ -3,7 +3,7 @@
 --         macOS style + Whitelist
 -- =============================================
 
-local GAMES_URL     = "https://raw.githubusercontent.com/minudoindo-dotcom/Galax/refs/heads/main/BetaID"
+local GAMES_URL     = local GAMES_URL = "https://raw.githubusercontent.com/minudoindo-dotcom/Galax/refs/heads/main/BetaID.lua"
 local WHITELIST_URL = "https://raw.githubusercontent.com/minudoindo-dotcom/Galax/refs/heads/main/BetaProfile.lua"
 
 local LOADER_TITLE     = "Galax Hub"
