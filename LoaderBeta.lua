@@ -3,8 +3,8 @@
 --         macOS style + Whitelist
 -- =============================================
 
-local GAMES_URL     = "https://raw.githubusercontent.com/WhyMayko/Game-Id-Beta/refs/heads/main/main.lua"
-local WHITELIST_URL = "https://raw.githubusercontent.com/WhyMayko/SP/refs/heads/main/main.lua"
+local GAMES_URL     = "https://raw.githubusercontent.com/minudoindo-dotcom/Galax/refs/heads/main/BetaID"
+local WHITELIST_URL = "https://raw.githubusercontent.com/minudoindo-dotcom/Galax/refs/heads/main/BetaProfile.lua"
 
 local LOADER_TITLE     = "Galax Hub"
 local LOADER_SUBTITLE  = "Loading..."
