@@ -73,11 +73,11 @@ end
 -- =============================================
 GalaxHubGames = nil
 local ok1 = pcall(function()
-    local fn = loadstring(game:HttpGet(GAMES_URL))
+    local raw = game:HttpGet(GAMES_URL)
+    local fn  = loadstring(raw)
     if fn then fn() end
 end)
 local SupportedGames = GalaxHubGames or {}
-
 -- =============================================
 -- FETCH WHITELIST FROM GITHUB
 -- =============================================
