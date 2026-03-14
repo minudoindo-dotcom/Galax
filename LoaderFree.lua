@@ -3,7 +3,7 @@
 --         macOS style
 -- =============================================
 
-local GAMES_URL        = "https://raw.githubusercontent.com/WhyMayko/Game-Id/refs/heads/main/main.lua"
+local GAMES_URL        = "https://raw.githubusercontent.com/minudoindo-dotcom/Galax/refs/heads/main/FreeID.lua"
 
 local LOADER_TITLE     = "Galax Hub"
 local LOADER_SUBTITLE  = "Loading..."
