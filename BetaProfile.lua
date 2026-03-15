@@ -17,6 +17,7 @@ GalaxHubWhitelist = {
     "gaxl",
     "Slebv2",
     "edenurheart",
+    "probablyzephyr",
 
     -- Add more users below this line!
 }
