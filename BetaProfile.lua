@@ -18,7 +18,7 @@ GalaxHubWhitelist = {
     "Slebv2",
     "edenurheart",
     "probablyzephyr",
-    "fbup ",
+    "fbup",
     "coolestpersonever99",
     "dtbsinfuls",
 
