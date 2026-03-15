@@ -15,5 +15,8 @@ GalaxHubWhitelist = {
     "junkbot6004",
     "thai1237",
     "gaxl",
+    "Slebv2",
+    "edenurheart",
+
     -- Add more users below this line!
 }
