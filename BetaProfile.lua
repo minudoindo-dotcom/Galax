@@ -24,6 +24,7 @@ GalaxHubWhitelist = {
     "adamgti",
     "7seesons",
     "DogSeamanAddict",
+    "kooiikc",
 
     -- Add more users below this line!
 }
