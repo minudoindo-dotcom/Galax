@@ -22,6 +22,7 @@ GalaxHubWhitelist = {
     "coolestpersonever99",
     "dtbsinfuls",
     "adamgti",
+    "7seesons",
 
     -- Add more users below this line!
 }
