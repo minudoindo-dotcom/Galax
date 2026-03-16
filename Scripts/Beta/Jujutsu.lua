@@ -2,7 +2,7 @@ loadstring(game:HttpGet("https://pastebin.com/raw/bghZmR8D"))()
 
 local Win = GalaxLib:CreateWindow({
     Title   = "Skid Galax",
-    Size    = Vector2.new(500, 500),
+    Size    = Vector2.new(500, 520),
     MenuKey = 0x70,
 })
 
@@ -49,9 +49,11 @@ local notifCooldown = 3
 
 local charlesEquippedNotified = false
 local headOfHeiEquippedNotified = false
+local luckyCowardEquippedNotified = false
 local charlesOnCooldown = false
 local headOfHeiEquipped = false
 local charlesEquipped = false
+local luckyCowardEquipped = false
 local charlesCooldownAddr = nil
 local charlesLastState = false
 
@@ -498,7 +500,6 @@ local BlockMode = {
     ["104137631480391"]=true,["78540777177847"]=true,["133936641185614"]=true,
     ["122573730331631"]=true,["82400997593751"]=true,["118634493886688"]=true,
     ["115586282387431"]=true,
-
     ["101283990868172"]=true,
     ["108708446862011"]=true,
     ["77583711129628"]=true,
@@ -514,6 +515,7 @@ local DashMode = {
 local KEY_F = 0x46
 local KEY_3 = 0x33
 local KEY_G = 0x47
+local KEY_M1 = 0x01
 local DISTANCE_LIMIT = 8
 local DASH_DISTANCE_LIMIT = 15
 local HOLD_DELAY = 0
@@ -630,6 +632,19 @@ local function checkForCharles(char)
     return moveset and moveset:FindFirstChild("Eye Catching") ~= nil
 end
 
+local function checkForLuckyCoward()
+    local characters = workspace:FindFirstChild("Characters")
+    if not characters then return false end
+    
+    local targetChar = characters:FindFirstChild("sakumoriya")
+    if not targetChar then return false end
+    
+    local moveset = targetChar:FindFirstChild("Moveset")
+    if not moveset then return false end
+    
+    return moveset:FindFirstChild("Dirty Play") ~= nil
+end
+
 local function checkEquippedAbilities()
     local player = game.Players.LocalPlayer
     local gui = player and player:FindFirstChild("PlayerGui")
@@ -640,6 +655,7 @@ local function checkEquippedAbilities()
     if not moveset then return end
     headOfHeiEquipped = moveset:FindFirstChild("Projection Breaker") ~= nil
     charlesEquipped = moveset:FindFirstChild("Eye Catching") ~= nil
+    
     if headOfHeiEquipped then
         if _G.AwakeningCounter_Enabled and not headOfHeiEquippedNotified then
             Win:Notify("Equipment", "Head of Hei equipped - Awakening ready", 2)
@@ -648,16 +664,25 @@ local function checkEquippedAbilities()
     else
         headOfHeiEquippedNotified = false
     end
+    
     if charlesEquipped then
         if _G.AutoCounter_Enabled and not charlesEquippedNotified then
-            Win:Notify("Equipment", "Charles equipped - Counter ready", 2)
-            charlesEquippedNotified = true
-        elseif _G.AwakeningCounter_Enabled and not charlesEquippedNotified then
-            Win:Notify("Equipment", "Charles equipped - Awakening ready", 2)
+            Win:Notify("Counter", "Charles Counter Ready", 2)
             charlesEquippedNotified = true
         end
     else
         charlesEquippedNotified = false
+    end
+    
+    local hasLuckyCoward = checkForLuckyCoward()
+    if hasLuckyCoward ~= luckyCowardEquipped then
+        luckyCowardEquipped = hasLuckyCoward
+        if _G.AutoCounter_Enabled and luckyCowardEquipped and not luckyCowardEquippedNotified then
+            Win:Notify("Counter", "Lucky Coward Counter Available", 3)
+            luckyCowardEquippedNotified = true
+        elseif not luckyCowardEquipped then
+            luckyCowardEquippedNotified = false
+        end
     end
 end
 
@@ -692,12 +717,9 @@ local function monitorCharlesCooldown()
 end
 
 local blockTriggered = false
-local blockTarget = nil
 local dashTriggered = false
-local dashTarget = nil
 local blockStart = 0
 local dashStart = 0
-local counterTriggered = false
 
 local DefenseTab = Win:AddTab("Defense")
 local DefSec = DefenseTab:AddSection("Auto Defense")
@@ -775,54 +797,97 @@ task.spawn(function()
         end
         local myRoot = myChar and (myChar:FindFirstChild("HumanoidRootPart") or myChar:FindFirstChild("Torso") or myChar:FindFirstChild("UpperTorso"))
         if not myRoot then continue end
+        
         local blockAnimPlayer = nil
         local dashAnimPlayer = nil
+        local blockAnimId = nil
+        local dashAnimId = nil
         local anyAnimPlayer = nil
+        local anyAnimId = nil
         local playersList = Players:GetPlayers()
+        
         for _, p in ipairs(playersList) do
             if not p or isLocalPlayer(p) or not p.Character then continue end
             local theirRoot = p.Character and (p.Character:FindFirstChild("HumanoidRootPart") or p.Character:FindFirstChild("Torso") or p.Character:FindFirstChild("UpperTorso"))
             if not theirRoot then continue end
             local dist = getMagnitude(theirRoot.Position, myRoot.Position)
+            
             if dist <= DISTANCE_LIMIT then
                 local animId = getCurrentAnimFromChar(p.Character, BlockMode)
-                if animId then blockAnimPlayer = p anyAnimPlayer = p end
+                if animId then
+                    blockAnimPlayer = p
+                    blockAnimId = animId
+                    anyAnimPlayer = p
+                    anyAnimId = animId
+                end
             end
             if dist <= DASH_DISTANCE_LIMIT then
                 local animId = getCurrentAnimFromChar(p.Character, DashMode)
-                if animId then dashAnimPlayer = p anyAnimPlayer = p end
+                if animId then
+                    dashAnimPlayer = p
+                    dashAnimId = animId
+                    anyAnimPlayer = p
+                    anyAnimId = animId
+                end
             end
         end
-        if _G.AutoCounter_Enabled and charlesEquipped and charlesReady and anyAnimPlayer then
-            if not counterTriggered then
-                keypress(KEY_3) wait(0.05) keyrelease(KEY_3)
-                counterTriggered = true
-                task.spawn(function() wait(0.5) counterTriggered = false end)
+        
+        -- AUTO COUNTER - HIGHEST PRIORITY, ZERO DELAY
+        if _G.AutoCounter_Enabled and anyAnimPlayer and anyAnimId then
+            if luckyCowardEquipped then
+                -- Lucky Coward: INSTANT mouse click
+                mouse1click()
+                if blockTriggered then keyrelease(KEY_F) blockTriggered = false end
+                if dashTriggered then keyrelease(KEY_F) dashTriggered = false end
+                continue
+            elseif charlesEquipped and charlesReady then
+                -- Charles: INSTANT key 3 press
+                keypress(KEY_3)
+                keyrelease(KEY_3)
+                if blockTriggered then keyrelease(KEY_F) blockTriggered = false end
+                if dashTriggered then keyrelease(KEY_F) dashTriggered = false end
+                continue
             end
-            if blockTriggered then keyrelease(KEY_F) blockTriggered = false end
-            if dashTriggered then keyrelease(KEY_F) dashTriggered = false end
-            continue
         end
-        if _G.AutoBlockDash_Enabled and dashAnimPlayer then
+        
+        -- AUTO BLOCK DASH
+        if _G.AutoBlockDash_Enabled and dashAnimPlayer and dashAnimId then
             if not dashTriggered then
-                dashTriggered = true dashStart = tick() keypress(KEY_F)
+                dashTriggered = true
+                dashStart = tick()
+                keypress(KEY_F)
             end
             if dashTriggered and tick() - dashStart >= BLOCK_HOLD_TIME then
-                keyrelease(KEY_F) mouse1click() dashTriggered = false
+                keyrelease(KEY_F)
+                mouse1click()
+                dashTriggered = false
             end
             continue
         end
-        if _G.AutoBlock_Enabled and blockAnimPlayer then
+        
+        -- AUTO BLOCK
+        if _G.AutoBlock_Enabled and blockAnimPlayer and blockAnimId then
             if not blockTriggered then
-                blockTriggered = true blockStart = tick() keypress(KEY_F)
+                blockTriggered = true
+                blockStart = tick()
+                keypress(KEY_F)
             end
             if blockTriggered and tick() - blockStart >= BLOCK_HOLD_TIME then
-                keyrelease(KEY_F) mouse1click() blockTriggered = false
+                keyrelease(KEY_F)
+                mouse1click()
+                blockTriggered = false
             end
             continue
         end
-        if blockTriggered then keyrelease(KEY_F) blockTriggered = false end
-        if dashTriggered then keyrelease(KEY_F) dashTriggered = false end
+        
+        if blockTriggered then
+            keyrelease(KEY_F)
+            blockTriggered = false
+        end
+        if dashTriggered then
+            keyrelease(KEY_F)
+            dashTriggered = false
+        end
     end
 end)
 
