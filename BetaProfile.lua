@@ -23,6 +23,7 @@ GalaxHubWhitelist = {
     "dtbsinfuls",
     "adamgti",
     "7seesons",
+    "DogSeamanAddict",
 
     -- Add more users below this line!
 }
