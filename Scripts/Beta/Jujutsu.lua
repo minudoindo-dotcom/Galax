@@ -57,6 +57,9 @@ local luckyCowardEquipped = false
 local charlesCooldownAddr = nil
 local charlesLastState = false
 
+local lastCharlesTime = 0
+local CHARLES_COOLDOWN = 2
+
 local VISIBLE_OFFSET = 1445
 local TIMER_OFFSET = 284
 
@@ -516,9 +519,8 @@ local KEY_F = 0x46
 local KEY_3 = 0x33
 local KEY_G = 0x47
 local KEY_M1 = 0x01
-local DISTANCE_LIMIT = 8
-local DASH_DISTANCE_LIMIT = 15
-local HOLD_DELAY = 0
+local BLOCK_RANGE = 8
+local DASH_RANGE = 15
 local BLOCK_HOLD_TIME = 0.25
 
 _G.AutoBlock_Enabled     = false
@@ -633,13 +635,12 @@ local function checkForCharles(char)
 end
 
 local function checkForLuckyCoward()
-    local characters = workspace:FindFirstChild("Characters")
-    if not characters then return false end
-    
-    local targetChar = characters:FindFirstChild("sakumoriya")
-    if not targetChar then return false end
-    
-    local moveset = targetChar:FindFirstChild("Moveset")
+    local player = game.Players.LocalPlayer
+    local gui = player and player:FindFirstChild("PlayerGui")
+    if not gui then return false end
+    local main = gui and gui:FindFirstChild("Main")
+    if not main then return false end
+    local moveset = main and main:FindFirstChild("Moveset")
     if not moveset then return false end
     
     return moveset:FindFirstChild("Dirty Play") ~= nil
@@ -802,9 +803,8 @@ task.spawn(function()
         local dashAnimPlayer = nil
         local blockAnimId = nil
         local dashAnimId = nil
-        local anyAnimPlayer = nil
-        local anyAnimId = nil
         local playersList = Players:GetPlayers()
+        local currentTime = tick()
         
         for _, p in ipairs(playersList) do
             if not p or isLocalPlayer(p) or not p.Character then continue end
@@ -812,45 +812,78 @@ task.spawn(function()
             if not theirRoot then continue end
             local dist = getMagnitude(theirRoot.Position, myRoot.Position)
             
-            if dist <= DISTANCE_LIMIT then
+            if dist <= BLOCK_RANGE then
                 local animId = getCurrentAnimFromChar(p.Character, BlockMode)
                 if animId then
                     blockAnimPlayer = p
                     blockAnimId = animId
-                    anyAnimPlayer = p
-                    anyAnimId = animId
                 end
             end
-            if dist <= DASH_DISTANCE_LIMIT then
+            if dist <= DASH_RANGE then
                 local animId = getCurrentAnimFromChar(p.Character, DashMode)
                 if animId then
                     dashAnimPlayer = p
                     dashAnimId = animId
-                    anyAnimPlayer = p
-                    anyAnimId = animId
                 end
             end
         end
         
-        -- AUTO COUNTER - HIGHEST PRIORITY, ZERO DELAY
-        if _G.AutoCounter_Enabled and anyAnimPlayer and anyAnimId then
-            if luckyCowardEquipped then
-                -- Lucky Coward: INSTANT mouse click
-                mouse1click()
+        if _G.AwakeningCounter_Enabled and isUltimateReady() and (headOfHeiEquipped or charlesEquipped) then
+            if blockAnimPlayer and blockAnimId then
+                keypress(KEY_G)
+                keyrelease(KEY_G)
+                if tick() - lastAwakeningNotif > notifCooldown then
+                    Win:Notify("Awakening", "Awakening counter on " .. blockAnimPlayer.Name, 2)
+                    lastAwakeningNotif = tick()
+                end
                 if blockTriggered then keyrelease(KEY_F) blockTriggered = false end
                 if dashTriggered then keyrelease(KEY_F) dashTriggered = false end
                 continue
-            elseif charlesEquipped and charlesReady then
-                -- Charles: INSTANT key 3 press
-                keypress(KEY_3)
-                keyrelease(KEY_3)
+            end
+            if dashAnimPlayer and dashAnimId then
+                keypress(KEY_G)
+                keyrelease(KEY_G)
+                if tick() - lastAwakeningNotif > notifCooldown then
+                    Win:Notify("Awakening", "Awakening counter on " .. dashAnimPlayer.Name, 2)
+                    lastAwakeningNotif = tick()
+                end
                 if blockTriggered then keyrelease(KEY_F) blockTriggered = false end
                 if dashTriggered then keyrelease(KEY_F) dashTriggered = false end
                 continue
             end
         end
         
-        -- AUTO BLOCK DASH
+        if _G.AutoCounter_Enabled then
+            local counterAvailable = luckyCowardEquipped or (charlesEquipped and charlesReady)
+            
+            if counterAvailable then
+                if blockAnimPlayer and blockAnimId then
+                    if luckyCowardEquipped then
+                        mouse1click()
+                    elseif charlesEquipped and charlesReady and currentTime - lastCharlesTime > CHARLES_COOLDOWN then
+                        keypress(KEY_3)
+                        keyrelease(KEY_3)
+                        lastCharlesTime = currentTime
+                    end
+                    if blockTriggered then keyrelease(KEY_F) blockTriggered = false end
+                    if dashTriggered then keyrelease(KEY_F) dashTriggered = false end
+                    continue
+                end
+                if dashAnimPlayer and dashAnimId then
+                    if luckyCowardEquipped then
+                        mouse1click()
+                    elseif charlesEquipped and charlesReady and currentTime - lastCharlesTime > CHARLES_COOLDOWN then
+                        keypress(KEY_3)
+                        keyrelease(KEY_3)
+                        lastCharlesTime = currentTime
+                    end
+                    if blockTriggered then keyrelease(KEY_F) blockTriggered = false end
+                    if dashTriggered then keyrelease(KEY_F) dashTriggered = false end
+                    continue
+                end
+            end
+        end
+        
         if _G.AutoBlockDash_Enabled and dashAnimPlayer and dashAnimId then
             if not dashTriggered then
                 dashTriggered = true
@@ -865,7 +898,6 @@ task.spawn(function()
             continue
         end
         
-        -- AUTO BLOCK
         if _G.AutoBlock_Enabled and blockAnimPlayer and blockAnimId then
             if not blockTriggered then
                 blockTriggered = true
@@ -887,41 +919,6 @@ task.spawn(function()
         if dashTriggered then
             keyrelease(KEY_F)
             dashTriggered = false
-        end
-    end
-end)
-
-task.spawn(function()
-    while true do
-        wait()
-        if not _G.AwakeningCounter_Enabled then continue end
-        if not isUltimateReady() then continue end
-        if not headOfHeiEquipped and not charlesEquipped then continue end
-        local myChar = LocalPlayer and LocalPlayer.Character
-        if not myChar then continue end
-        local myRoot = myChar and (myChar:FindFirstChild("HumanoidRootPart") or myChar:FindFirstChild("Torso") or myChar:FindFirstChild("UpperTorso"))
-        if not myRoot then continue end
-        local playersList = Players:GetPlayers()
-        for _, p in ipairs(playersList) do
-            if not p or isLocalPlayer(p) then continue end
-            if p.Character then
-                local theirRoot = p.Character and (p.Character:FindFirstChild("HumanoidRootPart") or p.Character:FindFirstChild("Torso") or p.Character:FindFirstChild("UpperTorso"))
-                if theirRoot then
-                    local dist = getMagnitude(theirRoot.Position, myRoot.Position)
-                    if dist <= DISTANCE_LIMIT then
-                        local blockAnim = getCurrentAnimFromChar(p.Character, BlockMode)
-                        local dashAnim = getCurrentAnimFromChar(p.Character, DashMode)
-                        if blockAnim or dashAnim then
-                            keypress(KEY_G) wait(0.1) keyrelease(KEY_G)
-                            if tick() - lastAwakeningNotif > notifCooldown then
-                                Win:Notify("Awakening", "Awakening counter on " .. p.Name, 2)
-                                lastAwakeningNotif = tick()
-                            end
-                            break
-                        end
-                    end
-                end
-            end
         end
     end
 end)
