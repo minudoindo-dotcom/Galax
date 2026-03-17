@@ -492,6 +492,7 @@ local BlockMode = {
     ["77583711129628"]=true,
     ["116910683335467"]=true,
 }
+
 local DashMode = {
     ["92966188946988"]=true,["81708642912019"]=true,["130284226842903"]=true,
     ["110978068388232"]=true,["134917827147266"]=true,["140597320237985"]=true,
@@ -499,9 +500,8 @@ local DashMode = {
 }
 
 local KEY_F = 0x46
-local DISTANCE_LIMIT = 8
-local DASH_DISTANCE_LIMIT = 15
-local HOLD_DELAY = 0
+local BLOCK_RANGE = 8
+local DASH_RANGE = 15
 local BLOCK_HOLD_TIME = 0.25
 
 _G.AutoBlock_Enabled     = false
@@ -584,10 +584,8 @@ local function isLocalPlayer(p)
 end
 
 local blockTriggered = false
-local blockTarget = nil
-local blockStart = 0
 local dashTriggered = false
-local dashTarget = nil
+local blockStart = 0
 local dashStart = 0
 
 local DefenseTab = Win:AddTab("Defense")
@@ -661,7 +659,7 @@ task.spawn(function()
                             local theirRoot = p.Character and (p.Character:FindFirstChild("HumanoidRootPart") or p.Character:FindFirstChild("Torso") or p.Character:FindFirstChild("UpperTorso"))
                             if theirRoot then
                                 local dist = getMagnitude(theirRoot.Position, myRoot.Position)
-                                if dist <= DISTANCE_LIMIT then
+                                if dist <= BLOCK_RANGE then
                                     local animId = getCurrentAnimFromChar(p.Character, BlockMode)
                                     if animId then
                                         blockAnimPlayer = p
@@ -716,7 +714,7 @@ task.spawn(function()
                             local theirRoot = p.Character and (p.Character:FindFirstChild("HumanoidRootPart") or p.Character:FindFirstChild("Torso") or p.Character:FindFirstChild("UpperTorso"))
                             if theirRoot then
                                 local dist = getMagnitude(theirRoot.Position, myRoot.Position)
-                                if dist <= DASH_DISTANCE_LIMIT then
+                                if dist <= DASH_RANGE then
                                     local animId = getCurrentAnimFromChar(p.Character, DashMode)
                                     if animId then
                                         dashAnimPlayer = p
