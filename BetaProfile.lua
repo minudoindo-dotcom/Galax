@@ -29,7 +29,7 @@ GalaxHubWhitelist = {
     "419victory",
     "NEUTRALlSATION",
     "lukethenuke611",
-    "test",
+    "ZxuqdDZtInsAnE417",
     "test",
     "test",
     "test",
