@@ -27,6 +27,7 @@ GalaxHubWhitelist = {
     "kooiikc",
     "SeRh1O_Main",
     "419victory",
+    "NEUTRALlSATION",
 
     -- Add more users below this line!
 }
