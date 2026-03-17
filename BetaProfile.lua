@@ -28,6 +28,15 @@ GalaxHubWhitelist = {
     "SeRh1O_Main",
     "419victory",
     "NEUTRALlSATION",
+    "lukethenuke611",
+    "test",
+    "test",
+    "test",
+    "test",
+    "test",
+    "test",
+    "test",
+    "test",
 
     -- Add more users below this line!
 }
