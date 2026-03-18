@@ -10,7 +10,7 @@ GalaxHubWhitelist = {
     "LYM1H",
     "goodgoods77",
     "woogadodobo",
-    "thehonoredih",
+    "CompetitiveOrDeath ",
     "EllaPhoenixToxic37",
     "junkbot6004",
     "thai1237",
