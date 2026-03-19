@@ -8,10 +8,6 @@
 loadstring(game:HttpGet("https://raw.githubusercontent.com/minudoindo-dotcom/Galax/refs/heads/main/Lib/Beta/Galax.lua"))()
 loadstring(game:HttpGet("https://raw.githubusercontent.com/minudoindo-dotcom/Galax/refs/heads/main/Lib/Beta/MatchaLib.lua"))()
 
--- ── 2. DELAY (sincroniza com animação do loader ~7s) ─────────────
--- Se executado direto sem loader, o delay é ignorável
-task.wait(7)
-
 -- ── 3. WINDOW ────────────────────────────────────────────────────
 local Win = GalaxLib:CreateWindow({
     Title   = "Bizarre Hub",
@@ -1699,16 +1695,24 @@ local function readAutoPlayFromConfig()
     return type(v) == "table" and v.value == true
 end
 
-local function getGuiState()
+-- ═══════════════════════════════════════════════════════════════
+--  DETECÇÃO: LocalPlayer existe em Workspace.Live?
+--  game.Workspace.Live[playerName] existe  → está no jogo (spawned)
+--  não existe                              → está no menu / loading
+-- ═══════════════════════════════════════════════════════════════
+
+local function getPlayerName()
     local lp = game.Players.LocalPlayer
-    if not lp then return "loading" end
-    local pg = lp:FindFirstChild("PlayerGui")
-    if not pg then return "loading" end
-    local hasMainHud  = pg:FindFirstChild("MainHud")  ~= nil
-    local hasMainMenu = pg:FindFirstChild("Main Menu") ~= nil
-    if hasMainHud and not hasMainMenu then return "ingame" end
-    if hasMainMenu then return "menu" end  -- Main Menu presente = menu, independente de MainHud
-    return "loading"
+    return lp and lp.Name or nil
+end
+
+-- Retorna true se o modelo do player existir em Workspace.Live
+local function isSpawned()
+    local name = getPlayerName()
+    if not name then return false end
+    local live = game.Workspace:FindFirstChild("Live")
+    if not live then return false end
+    return live:FindFirstChild(name) ~= nil
 end
 
 local function clickPlayButton()
@@ -1744,65 +1748,60 @@ local function clickPlayButton()
 end
 
 task.spawn(function()
-    print("[BOOT] task.spawn iniciado")
 
-    -- Espera PlayerGui com timeout de 30s
+    -- 1. Espera LocalPlayer existir (timeout 30s)
     local t0 = os.clock()
     repeat
         task.wait(0.5)
         if os.clock() - t0 > 30 then
-            print("[BOOT] TIMEOUT esperando PlayerGui!")
             break
         end
-    until game.Players.LocalPlayer
-        and game.Players.LocalPlayer:FindFirstChild("PlayerGui")
+    until game.Players.LocalPlayer ~= nil
 
-    local pg = game.Players.LocalPlayer and game.Players.LocalPlayer:FindFirstChild("PlayerGui")
-    print("[BOOT] PlayerGui="..(pg and "OK" or "NIL"))
-    if not pg then return end
-    print("[BOOT] hasMainMenu="..(pg:FindFirstChild("Main Menu") ~= nil and "SIM" or "NAO"))
+    local name = getPlayerName()
+    if not name then return end
 
+    -- 2. Carrega apenas posições salvas (seguro antes de spawnar)
     loadConfigPartial({"Positions"})
 
-    local function hasMainMenu()
-        local pg = game.Players.LocalPlayer:FindFirstChild("PlayerGui")
-        return pg and pg:FindFirstChild("Main Menu") ~= nil
-    end
-
-    if hasMainMenu() then
-        -- Está no menu principal
+    -- 3. Se ainda não spawnou no jogo, ativa AutoPlay se configurado
+    if not isSpawned() then
         _G.SafeMode = true
+
         local shouldAutoPlay = readAutoPlayFromConfig()
         if shouldAutoPlay then
             task.wait(2)
-            while hasMainMenu() do
+            while not isSpawned() do
                 clickPlayButton()
                 task.wait(2)
             end
         else
-            -- Auto play desligado: só espera o menu sumir
-            while hasMainMenu() do
+            -- AutoPlay desligado: só espera o player spawnar
+            while not isSpawned() do
                 task.wait(0.5)
             end
         end
     end
 
-    -- Menu sumiu ou nunca existiu — está no jogo
+    -- 4. Player spawnou — aguarda 3s e carrega tudo
     task.wait(3)
     Win:LoadConfig(true, false)
     _G.SafeMode = false
     Win:Notify("Config loaded!", "Bizarre Hub", 3)
 
-    -- Watchdog: se voltar pro menu (kick, reconexão, etc.)
+    -- 5. Watchdog: monitora se o player sai do jogo (kick, replay, etc.)
     while true do
         task.wait(1)
-        if hasMainMenu() then
+        if not isSpawned() then
             _G.SafeMode = true
+
             local shouldAutoPlay = readAutoPlayFromConfig()
-            while hasMainMenu() do
+            -- Espera spawnar de novo
+            while not isSpawned() do
                 if shouldAutoPlay then clickPlayButton() end
                 task.wait(2)
             end
+
             task.wait(3)
             Win:LoadConfig(true, false)
             _G.SafeMode = false
