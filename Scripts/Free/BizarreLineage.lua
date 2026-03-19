@@ -378,18 +378,18 @@ end
 -- ════════════════════════════════════════════════════════════════
 
 local _espCFG = {
-    box        = false,
-    name       = false,
-    distance   = false,
+    box        = true,
+    name       = true,
+    distance   = true,
     traceline  = false,
     renderWait = 0.033,
 }
 
 local _playerESP = {
     enable     = false,
-    showName   = false,
-    showDist   = false,
-    showStand  = false,
+    showName   = true,
+    showDist   = true,
+    showStand  = true,
     nameColor  = Color3.fromRGB(255, 255, 255),
     standColor = Color3.fromRGB(255, 200, 50),
     drawings   = {},
@@ -1747,10 +1747,10 @@ task.spawn(function()
     repeat task.wait(0.5) until game.Players.LocalPlayer
         and game.Players.LocalPlayer:FindFirstChild("PlayerGui")
 
-    -- 2. Carrega APENAS Positions — pos_* ficam prontos antes de qualquer clique
+    -- 2. Carrega APENAS Positions
     loadConfigPartial({"Positions"})
 
-    -- 3. Aguarda estado definido (sem transitório) — timeout de 10s assume ingame
+    -- 3. Aguarda estado definido — timeout de 10s assume ingame
     local state = getGuiState()
     local t0 = os.clock()
     while state == "loading" do
@@ -1760,11 +1760,7 @@ task.spawn(function()
     end
 
     if state == "ingame" then
-        -- espera o menu da GalaxLib terminar de renderizar antes de carregar config
-        -- (pode ter vindo via loader onde o jogo já estava ingame)
-        task.wait(0.5)
-        repeat task.wait(0.2) until Win._running
-        task.wait(1.5)
+        task.wait(4)  -- tempo para GalaxLib inicializar
         Win:LoadConfig(true, false)
         _G.SafeMode = false
         Win:Notify("Config loaded!", "Bizarre Hub", 3)
@@ -1781,22 +1777,21 @@ task.spawn(function()
             end
         end
 
-        -- Aguarda transição sumir — timeout de 15s
+        -- Aguarda transição — timeout de 15s
         local t1 = os.clock()
         while getGuiState() == "loading" do
             task.wait(0.5)
             if os.clock() - t1 > 15 then break end
         end
 
-        repeat task.wait(0.2) until Win._running
-        task.wait(1.5)
+        task.wait(4)
         Win:LoadConfig(true, false)
         _G.SafeMode = false
         Win:Notify("Config loaded!", "Bizarre Hub", 3)
     end
 
-    -- 4. Watchdog: detecta se voltou ao menu (kick, reconexão, etc.)
-    while Win._running do
+    -- 4. Watchdog
+    while true do
         task.wait(1)
         local s = getGuiState()
         if s == "menu" then
@@ -1808,7 +1803,7 @@ task.spawn(function()
                 end
                 task.wait(2)
             end
-            task.wait(3)
+            task.wait(4)
             Win:LoadConfig(true, false)
             _G.SafeMode = false
             Win:Notify("Config loaded!", "Bizarre Hub", 3)
