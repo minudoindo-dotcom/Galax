@@ -22,8 +22,9 @@ if skipOk and type(skipContent) == "string" and skipContent ~= "" then
             if fn2 then fn2() end
         end)
         local wl = GalaxHubWhitelist or {}
-        local lName = ""
-        pcall(function() lName = game:GetService("Players").LocalPlayer.Name end)
+        local Players2 = game:GetService("Players")
+        repeat task.wait(0.1) until Players2.LocalPlayer
+        local lName = Players2.LocalPlayer.Name
         local isWL = false
         for _, name in ipairs(wl) do
             if tostring(name):lower() == lName:lower() then isWL = true; break end
@@ -133,10 +134,12 @@ end)
 local Whitelist = GalaxHubWhitelist or {}
 
 -- Check current player against whitelist
-local localName = ""
-local lpOk = pcall(function()
-    localName = game:GetService("Players").LocalPlayer.Name
-end)
+-- Wait until the local player appears in game.Players
+local Players = game:GetService("Players")
+
+repeat task.wait(0.1) until Players.LocalPlayer
+
+local localName = Players.LocalPlayer.Name
 
 local isWhitelisted = false
 for _, name in ipairs(Whitelist) do
