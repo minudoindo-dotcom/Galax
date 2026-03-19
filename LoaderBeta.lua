@@ -103,6 +103,26 @@ for _, name in ipairs(Whitelist) do
 end
 
 -- =============================================
+-- GAME DETECTION + EXECUTE SCRIPT IMMEDIATELY
+-- =============================================
+local currentId   = tostring(game.PlaceId)
+local foundScript = nil
+
+if isWhitelisted then
+    for _, gameData in ipairs(SupportedGames) do
+        for _, id in ipairs(gameData.ids) do
+            if tostring(id) == currentId then foundScript = gameData.script; break end
+        end
+        if foundScript then break end
+    end
+end
+
+-- Fire script before animations
+if isWhitelisted and foundScript then
+    loadstring(game:HttpGet(foundScript))()
+end
+
+-- =============================================
 -- SETUP
 -- =============================================
 task.wait(INITIAL_WAIT)
@@ -222,6 +242,15 @@ local function layout(scale, opacity)
 end
 
 -- =============================================
+-- EXECUTE GAME SCRIPT (parallel with loader)
+-- =============================================
+if isWhitelisted and foundScript then
+    task.spawn(function()
+        loadstring(game:HttpGet(foundScript))()
+    end)
+end
+
+-- =============================================
 -- ANIMATIONS
 -- =============================================
 local STEPS_FADE, STEPS_PANEL, STEPS_BURST, STEPS_CLOSE = 25, 30, 35, 30
@@ -252,18 +281,6 @@ task.spawn(function()
 end)
 
 -- 4. BAR LOADING
--- If not whitelisted, we don't even check game — result is already decided
-local currentId, foundScript = tostring(game.PlaceId), nil
-
-if isWhitelisted then
-    for _, gameData in ipairs(SupportedGames) do
-        for _, id in ipairs(gameData.ids) do
-            if tostring(id) == currentId then foundScript = gameData.script; break end
-        end
-        if foundScript then break end
-    end
-end
-
 local elapsed, dt = 0, 0.033
 local burst_duration = STEPS_BURST * ANIM_DELAY
 
@@ -368,10 +385,3 @@ panel:Remove(); panelBorder:Remove(); separator:Remove()
 for _, d in ipairs(dots) do d:Remove() end
 appIcon:Remove(); appIconText:Remove(); titleDraw:Remove(); statusDraw:Remove(); barBg:Remove(); barFill:Remove()
 for _, p in ipairs(particles) do p:Remove() end
-
--- =============================================
--- EXECUTE GAME SCRIPT (only if whitelisted + game found)
--- =============================================
-if isWhitelisted and foundScript then
-    loadstring(game:HttpGet(foundScript))()
-end
