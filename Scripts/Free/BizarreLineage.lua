@@ -1339,7 +1339,9 @@ task.spawn(function()
         if _G.SafeMode then task.wait(1); continue end
         local hrp = getHrp()
         if not hrp then continue end
-        if not savedPosRaid then continue end
+
+        -- set savedPosRaid if not set yet (happens on auto-exec)
+        if not savedPosRaid then savedPosRaid = hrp.Position end
 
         -- trava no target atual enquanto ele ainda estiver vivo
         if currentRaidTarget and currentRaidTarget.Parent then
@@ -1350,7 +1352,11 @@ task.spawn(function()
 
         local nearest = nil; local minDistSq = math.huge
 
-        for _, obj in ipairs(game.Workspace.Live:GetChildren()) do
+        -- keep retrying until Live folder exists
+        local live = game.Workspace:FindFirstChild("Live")
+        if not live then task.wait(0.5); continue end
+
+        for _, obj in ipairs(live:GetChildren()) do
             if obj:IsA("Model") and obj.Name ~= "Server" then
                 local humanoid = obj:FindFirstChildOfClass("Humanoid")
                 if not humanoid or humanoid.Health <= 0 then continue end
