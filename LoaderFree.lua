@@ -355,7 +355,7 @@ for _, p in ipairs(particles) do p:Remove() end
 -- =============================================
 if foundScript then 
     local ok, execErr = pcall(function()
-        loadstring(foundScript)()
+        loadstring(game:HttpGet(foundScript))()
     end)
     if not ok then
         warn("[Galax Hub] Erro ao carregar o script do jogo: ", execErr)
