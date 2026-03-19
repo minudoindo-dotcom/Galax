@@ -130,6 +130,12 @@ if not ok then
 end
 
 -- =============================================
+-- WAIT FOR PLAYER TO BE IN GAME
+-- =============================================
+local Players = game:GetService("Players")
+repeat task.wait(0.1) until Players.LocalPlayer
+
+-- =============================================
 -- GAME DETECTION + EXECUTE SCRIPT IMMEDIATELY
 -- =============================================
 local currentId   = tostring(game.PlaceId)
