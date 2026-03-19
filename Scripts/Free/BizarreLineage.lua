@@ -1747,7 +1747,6 @@ task.spawn(function()
     repeat task.wait(0.5) until game.Players.LocalPlayer
         and game.Players.LocalPlayer:FindFirstChild("PlayerGui")
 
-    -- Carrega posições salvas antes de qualquer clique
     loadConfigPartial({"Positions"})
 
     local function hasMainMenu()
@@ -1755,8 +1754,8 @@ task.spawn(function()
         return pg and pg:FindFirstChild("Main Menu") ~= nil
     end
 
-    -- Se está no menu principal → auto play se configurado
     if hasMainMenu() then
+        -- Está no menu principal
         _G.SafeMode = true
         local shouldAutoPlay = readAutoPlayFromConfig()
         if shouldAutoPlay then
@@ -1765,15 +1764,15 @@ task.spawn(function()
                 clickPlayButton()
                 task.wait(2)
             end
-        end
-        -- Aguarda entrar no jogo — timeout 20s
-        local t = os.clock()
-        while hasMainMenu() and os.clock() - t < 20 do
-            task.wait(0.5)
+        else
+            -- Auto play desligado: só espera o menu sumir
+            while hasMainMenu() do
+                task.wait(0.5)
+            end
         end
     end
 
-    -- Chegou no jogo (ou já estava) — carrega config e libera
+    -- Menu sumiu ou nunca existiu — está no jogo
     task.wait(3)
     Win:LoadConfig(true, false)
     _G.SafeMode = false
