@@ -378,18 +378,18 @@ end
 -- ════════════════════════════════════════════════════════════════
 
 local _espCFG = {
-    box        = true,
-    name       = true,
-    distance   = true,
+    box        = false,
+    name       = false,
+    distance   = false,
     traceline  = false,
     renderWait = 0.033,
 }
 
 local _playerESP = {
     enable     = false,
-    showName   = true,
-    showDist   = true,
-    showStand  = true,
+    showName   = false,
+    showDist   = false,
+    showStand  = false,
     nameColor  = Color3.fromRGB(255, 255, 255),
     standColor = Color3.fromRGB(255, 200, 50),
     drawings   = {},
