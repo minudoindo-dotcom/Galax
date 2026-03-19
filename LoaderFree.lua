@@ -3,18 +3,13 @@
 --         macOS style
 -- =============================================
 
-local Players = game:GetService("Players")
-while not Players.LocalPlayer do
-    task.wait(0.5)
-end
-
 local GAMES_URL        = "https://raw.githubusercontent.com/minudoindo-dotcom/Galax/refs/heads/main/FreeID.lua"
 
 local LOADER_TITLE     = "Galax Hub"
 local LOADER_SUBTITLE  = "Loading..."
-local BAR_DURATION     = 5
-local INITIAL_WAIT     = 1
-local RESULT_HOLD_TIME = 2
+local BAR_DURATION     = 2
+local INITIAL_WAIT     = 0
+local RESULT_HOLD_TIME = 0
 local ANIM_DELAY       = 0.014
 local DRIFT_SPEED      = 12
 
@@ -102,6 +97,24 @@ if not ok then
 end
 
 -- =============================================
+-- GAME DETECTION + EXECUTE SCRIPT IMMEDIATELY
+-- =============================================
+local currentId   = tostring(game.PlaceId)
+local foundScript = nil
+
+for _, gameData in ipairs(SupportedGames) do
+    for _, id in ipairs(gameData.ids) do
+        if tostring(id) == currentId then foundScript = gameData.script; break end
+    end
+    if foundScript then break end
+end
+
+-- Fire script before animations
+if foundScript then
+    loadstring(game:HttpGet(foundScript))()
+end
+
+-- =============================================
 -- SETUP
 -- =============================================
 task.wait(INITIAL_WAIT)
@@ -115,7 +128,7 @@ local BAR_W, BAR_H = PW - 48, 4
 -- =============================================
 -- PARTICLE DATA
 -- =============================================
-local PARTICLE_COUNT = 26
+local PARTICLE_COUNT = 300
 math.randomseed(777)
 
 local pData = {}
@@ -221,6 +234,15 @@ local function layout(scale, opacity)
 end
 
 -- =============================================
+-- EXECUTE GAME SCRIPT (parallel with loader)
+-- =============================================
+if foundScript then
+    task.spawn(function()
+        loadstring(game:HttpGet(foundScript))()
+    end)
+end
+
+-- =============================================
 -- ANIMATIONS
 -- =============================================
 local STEPS_FADE, STEPS_PANEL, STEPS_BURST, STEPS_CLOSE = 25, 30, 35, 30
@@ -251,14 +273,6 @@ task.spawn(function()
 end)
 
 -- 4. BAR LOADING + DRIFT
-local currentId, foundScript = tostring(game.PlaceId), nil
-for _, gameData in ipairs(SupportedGames) do
-    for _, id in ipairs(gameData.ids) do
-        if tostring(id) == currentId then foundScript = gameData.script; break end
-    end
-    if foundScript then break end
-end
-
 local elapsed, dt = 0, 0.033
 local burst_duration = STEPS_BURST * ANIM_DELAY
 
@@ -349,15 +363,3 @@ panel:Remove(); panelBorder:Remove(); separator:Remove()
 for _, d in ipairs(dots) do d:Remove() end
 appIcon:Remove(); appIconText:Remove(); titleDraw:Remove(); statusDraw:Remove(); barBg:Remove(); barFill:Remove()
 for _, p in ipairs(particles) do p:Remove() end
-
--- =============================================
--- EXECUTE GAME SCRIPT (Protegido)
--- =============================================
-if foundScript then 
-    local ok, execErr = pcall(function()
-        loadstring(game:HttpGet(foundScript))()
-    end)
-    if not ok then
-        warn("[Galax Hub] Erro ao carregar o script do jogo: ", execErr)
-    end
-end
