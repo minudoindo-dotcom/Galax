@@ -1309,10 +1309,7 @@ task.spawn(function()
         local playerSet = {}
         for _, p in ipairs(game.Players:GetPlayers()) do playerSet[p.Name] = true end
 
-        local live = game.Workspace:FindFirstChild("Live")
-        if not live then task.wait(0.5); continue end
-
-        for _, obj in ipairs(live:GetChildren()) do
+        for _, obj in ipairs(game.Workspace.Live:GetChildren()) do
             if obj:IsA("Model") and obj.Name ~= "Server" and not playerSet[obj.Name] then
                 local hum = obj:FindFirstChildOfClass("Humanoid")
                 if not hum or hum.Health <= 0 then continue end
