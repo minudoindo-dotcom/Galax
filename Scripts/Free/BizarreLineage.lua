@@ -1743,9 +1743,11 @@ local function clickPlayButton()
 end
 
 task.spawn(function()
+    print("[BOOT] task.spawn iniciado")
     -- Espera PlayerGui existir
     repeat task.wait(0.5) until game.Players.LocalPlayer
         and game.Players.LocalPlayer:FindFirstChild("PlayerGui")
+    print("[BOOT] PlayerGui encontrado, hasMainMenu="..tostring(game.Players.LocalPlayer.PlayerGui:FindFirstChild("Main Menu") ~= nil))
 
     loadConfigPartial({"Positions"})
 
