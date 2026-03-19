@@ -5,7 +5,7 @@ GalaxHubGames = {
     }, -- Precisa de virgula viu
     {
         ids = { "14890802310", "74747090658891", "77923379150463" },
-        script = [[loadstring(game:HttpGet(""))()]]
+        script = [[loadstring(game:HttpGet("https://raw.githubusercontent.com/minudoindo-dotcom/Galax/refs/heads/main/Scripts/Free/BizarreLineage.lua"))()]]
     }
        -- Adicione mais jogos aqui!
 }
