@@ -5,11 +5,12 @@
 -- ════════════════════════════════════════════════════════════════
 
 -- ── 1. LIBS ──────────────────────────────────────────────────────
-loadstring(game:HttpGet("https://pastebin.com/raw/bghZmR8D"))()
+loadstring(game:HttpGet("https://raw.githubusercontent.com/minudoindo-dotcom/Galax/refs/heads/main/Lib/Beta/Galax.lua"))()
 loadstring(game:HttpGet("https://raw.githubusercontent.com/minudoindo-dotcom/Galax/refs/heads/main/Lib/Beta/MatchaLib.lua"))()
 
--- MatchaLib já carregou offsets e expõe MatchaLib.Offsets
--- primOffset e rotOffset ficam disponíveis via MatchaLib internamente
+-- ── 2. DELAY (sincroniza com animação do loader ~7s) ─────────────
+-- Se executado direto sem loader, o delay é ignorável
+task.wait(7)
 
 -- ── 3. WINDOW ────────────────────────────────────────────────────
 local Win = GalaxLib:CreateWindow({
