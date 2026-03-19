@@ -422,5 +422,3 @@ function MatchaLib.Enemy.New(hrp)
 
     return self
 end
-
-print("MatchaLib v2.0 loaded | primOffset="..primOffset.." rotOffset="..rotOffset)
