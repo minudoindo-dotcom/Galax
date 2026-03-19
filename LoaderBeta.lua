@@ -242,15 +242,6 @@ local function layout(scale, opacity)
 end
 
 -- =============================================
--- EXECUTE GAME SCRIPT (parallel with loader)
--- =============================================
-if isWhitelisted and foundScript then
-    task.spawn(function()
-        loadstring(game:HttpGet(foundScript))()
-    end)
-end
-
--- =============================================
 -- ANIMATIONS
 -- =============================================
 local STEPS_FADE, STEPS_PANEL, STEPS_BURST, STEPS_CLOSE = 25, 30, 35, 30
