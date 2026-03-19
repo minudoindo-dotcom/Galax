@@ -1340,19 +1340,14 @@ task.spawn(function()
         local hrp = getHrp()
         if not hrp then continue end
 
-        -- set savedPosRaid if not set yet (happens on auto-exec)
+        -- auto-exec fix: set savedPosRaid if not set yet
         if not savedPosRaid then savedPosRaid = hrp.Position end
 
-        -- trava no target atual enquanto ele ainda estiver vivo
-        if currentRaidTarget and currentRaidTarget.Parent then
-            local hum = currentRaidTarget.Parent:FindFirstChildOfClass("Humanoid")
-            if hum and hum.Health > 0 then continue end
-            currentRaidTarget = nil; _cachedHrpAddr = nil; voidMotionOrigin = nil
-        end
-
+        -- reset target every iteration (old behaviour — simpler and more reliable)
+        currentRaidTarget = nil
         local nearest = nil; local minDistSq = math.huge
 
-        -- keep retrying until Live folder exists
+        -- wait for Live folder to exist
         local live = game.Workspace:FindFirstChild("Live")
         if not live then task.wait(0.5); continue end
 
