@@ -136,7 +136,7 @@ local BAR_W, BAR_H = PW - 48, 4
 -- =============================================
 -- PARTICLE DATA
 -- =============================================
-local PARTICLE_COUNT = 26
+local PARTICLE_COUNT = 300
 math.randomseed(777)
 
 local pData = {}
