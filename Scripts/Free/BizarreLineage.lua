@@ -5,7 +5,7 @@
 -- ════════════════════════════════════════════════════════════════
 
 -- ── 1. LIBS ──────────────────────────────────────────────────────
-loadstring(game:HttpGet("https://raw.githubusercontent.com/minudoindo-dotcom/Galax/refs/heads/main/Lib/Beta/Galax.lua"))()
+loadstring(game:HttpGet("https://pastebin.com/raw/bghZmR8D"))()
 loadstring(game:HttpGet("https://raw.githubusercontent.com/minudoindo-dotcom/Galax/refs/heads/main/Lib/Beta/MatchaLib.lua"))()
 
 -- MatchaLib já carregou offsets e expõe MatchaLib.Offsets
@@ -1760,7 +1760,11 @@ task.spawn(function()
     end
 
     if state == "ingame" then
-        task.wait(3)
+        -- espera o menu da GalaxLib terminar de renderizar antes de carregar config
+        -- (pode ter vindo via loader onde o jogo já estava ingame)
+        task.wait(0.5)
+        repeat task.wait(0.2) until Win._running
+        task.wait(1.5)
         Win:LoadConfig(true, false)
         _G.SafeMode = false
         Win:Notify("Config loaded!", "Bizarre Hub", 3)
@@ -1784,7 +1788,8 @@ task.spawn(function()
             if os.clock() - t1 > 15 then break end
         end
 
-        task.wait(3)
+        repeat task.wait(0.2) until Win._running
+        task.wait(1.5)
         Win:LoadConfig(true, false)
         _G.SafeMode = false
         Win:Notify("Config loaded!", "Bizarre Hub", 3)
