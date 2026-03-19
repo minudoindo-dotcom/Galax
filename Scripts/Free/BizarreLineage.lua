@@ -1743,72 +1743,56 @@ local function clickPlayButton()
 end
 
 task.spawn(function()
-    -- 1. Espera PlayerGui existir
+    -- Espera PlayerGui existir
     repeat task.wait(0.5) until game.Players.LocalPlayer
         and game.Players.LocalPlayer:FindFirstChild("PlayerGui")
 
-    -- 2. Carrega APENAS Positions
+    -- Carrega posições salvas antes de qualquer clique
     loadConfigPartial({"Positions"})
 
-    -- 3. Aguarda estado definido — timeout de 10s assume ingame
-    local state = getGuiState()
-    local t0 = os.clock()
-    while state == "loading" do
-        task.wait(0.5)
-        state = getGuiState()
-        if os.clock() - t0 > 10 then state = "ingame"; break end
+    local function hasMainMenu()
+        local pg = game.Players.LocalPlayer:FindFirstChild("PlayerGui")
+        return pg and pg:FindFirstChild("Main Menu") ~= nil
     end
 
-    if state == "ingame" then
-        task.wait(4)  -- tempo para GalaxLib inicializar
-        Win:LoadConfig(true, false)
-        _G.SafeMode = false
-        Win:Notify("Config loaded!", "Bizarre Hub", 3)
-
-    elseif state == "menu" then
+    -- Se está no menu principal → auto play se configurado
+    if hasMainMenu() then
         _G.SafeMode = true
         local shouldAutoPlay = readAutoPlayFromConfig()
-
         if shouldAutoPlay then
             task.wait(2)
-            while getGuiState() == "menu" do
+            while hasMainMenu() do
                 clickPlayButton()
                 task.wait(2)
             end
         end
-
-        -- Aguarda transição — timeout de 15s
-        local t1 = os.clock()
-        while getGuiState() == "loading" do
+        -- Aguarda entrar no jogo — timeout 20s
+        local t = os.clock()
+        while hasMainMenu() and os.clock() - t < 20 do
             task.wait(0.5)
-            if os.clock() - t1 > 15 then break end
         end
-
-        task.wait(4)
-        Win:LoadConfig(true, false)
-        _G.SafeMode = false
-        Win:Notify("Config loaded!", "Bizarre Hub", 3)
     end
 
-    -- 4. Watchdog
+    -- Chegou no jogo (ou já estava) — carrega config e libera
+    task.wait(3)
+    Win:LoadConfig(true, false)
+    _G.SafeMode = false
+    Win:Notify("Config loaded!", "Bizarre Hub", 3)
+
+    -- Watchdog: se voltar pro menu (kick, reconexão, etc.)
     while true do
         task.wait(1)
-        local s = getGuiState()
-        if s == "menu" then
+        if hasMainMenu() then
             _G.SafeMode = true
             local shouldAutoPlay = readAutoPlayFromConfig()
-            while getGuiState() ~= "ingame" do
-                if shouldAutoPlay and getGuiState() == "menu" then
-                    clickPlayButton()
-                end
+            while hasMainMenu() do
+                if shouldAutoPlay then clickPlayButton() end
                 task.wait(2)
             end
-            task.wait(4)
+            task.wait(3)
             Win:LoadConfig(true, false)
             _G.SafeMode = false
             Win:Notify("Config loaded!", "Bizarre Hub", 3)
-        elseif s == "loading" then
-            _G.SafeMode = true
         end
     end
 end)
