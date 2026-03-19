@@ -72,7 +72,7 @@ end
 -- FETCH GAME LIST FROM GITHUB
 -- =============================================
 GalaxHubGames = nil
-local ok1 = pcall(function()
+pcall(function()
     local raw = game:HttpGet(GAMES_URL)
     local fn  = loadstring(raw)
     if fn then fn() end
@@ -373,5 +373,5 @@ for _, p in ipairs(particles) do p:Remove() end
 -- EXECUTE GAME SCRIPT (only if whitelisted + game found)
 -- =============================================
 if isWhitelisted and foundScript then
-    loadstring(foundScript)()
+    loadstring(game:HttpGet(foundScript))()
 end
