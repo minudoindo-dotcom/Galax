@@ -1744,10 +1744,22 @@ end
 
 task.spawn(function()
     print("[BOOT] task.spawn iniciado")
-    -- Espera PlayerGui existir
-    repeat task.wait(0.5) until game.Players.LocalPlayer
+
+    -- Espera PlayerGui com timeout de 30s
+    local t0 = os.clock()
+    repeat
+        task.wait(0.5)
+        if os.clock() - t0 > 30 then
+            print("[BOOT] TIMEOUT esperando PlayerGui!")
+            break
+        end
+    until game.Players.LocalPlayer
         and game.Players.LocalPlayer:FindFirstChild("PlayerGui")
-    print("[BOOT] PlayerGui encontrado, hasMainMenu="..tostring(game.Players.LocalPlayer.PlayerGui:FindFirstChild("Main Menu") ~= nil))
+
+    local pg = game.Players.LocalPlayer and game.Players.LocalPlayer:FindFirstChild("PlayerGui")
+    print("[BOOT] PlayerGui="..(pg and "OK" or "NIL"))
+    if not pg then return end
+    print("[BOOT] hasMainMenu="..(pg:FindFirstChild("Main Menu") ~= nil and "SIM" or "NAO"))
 
     loadConfigPartial({"Positions"})
 
