@@ -5,7 +5,7 @@
 -- ════════════════════════════════════════════════════════════════
 
 -- ── 1. LIBS ──────────────────────────────────────────────────────
-loadstring(game:HttpGet("https://pastebin.com/raw/bghZmR8D"))()
+loadstring(game:HttpGet("https://raw.githubusercontent.com/minudoindo-dotcom/Galax/refs/heads/main/Lib/Beta/Galax.lua"))()
 loadstring(game:HttpGet("https://raw.githubusercontent.com/minudoindo-dotcom/Galax/refs/heads/main/Lib/Beta/MatchaLib.lua"))()
 
 -- MatchaLib já carregou offsets e expõe MatchaLib.Offsets
