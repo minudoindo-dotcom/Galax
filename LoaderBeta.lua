@@ -8,9 +8,9 @@ local WHITELIST_URL = "https://raw.githubusercontent.com/minudoindo-dotcom/Galax
 
 local LOADER_TITLE     = "Galax Hub"
 local LOADER_SUBTITLE  = "Loading..."
-local BAR_DURATION     = 5
-local INITIAL_WAIT     = 1
-local RESULT_HOLD_TIME = 2
+local BAR_DURATION     = 2
+local INITIAL_WAIT     = 0
+local RESULT_HOLD_TIME = 0
 local ANIM_DELAY       = 0.014
 local DRIFT_SPEED      = 12
 
