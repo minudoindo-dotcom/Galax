@@ -5,6 +5,39 @@
 
 local GAMES_URL        = "https://raw.githubusercontent.com/minudoindo-dotcom/Galax/refs/heads/main/FreeID.lua"
 
+-- =============================================
+-- SKIP LOADER CHECK
+-- =============================================
+local skipOk, skipContent = pcall(readfile, "Galax/Settings/SkipLoader.lua")
+if skipOk and type(skipContent) == "string" and skipContent ~= "" then
+    SkipLoader = nil
+    local fn = loadstring(skipContent)
+    if fn then fn() end
+    if SkipLoader == true then
+        -- Skip loader entirely, just find and run the script
+        GalaxHubGames = nil
+        pcall(function()
+            local urlBypass = GAMES_URL .. "?t=" .. tostring(os.time())
+            local raw = game:HttpGet(urlBypass)
+            if raw and raw ~= "" and not string.find(raw, "404: Not Found") then
+                local fn2 = loadstring(raw)
+                if fn2 then fn2() end
+            end
+        end)
+        local games = GalaxHubGames or {}
+        local cId = tostring(game.PlaceId)
+        for _, gd in ipairs(games) do
+            for _, id in ipairs(gd.ids) do
+                if tostring(id) == cId then
+                    loadstring(game:HttpGet(gd.script))()
+                    return
+                end
+            end
+        end
+        return
+    end
+end
+
 local LOADER_TITLE     = "Galax Hub"
 local LOADER_SUBTITLE  = "Loading..."
 local BAR_DURATION     = 2
@@ -128,7 +161,7 @@ local BAR_W, BAR_H = PW - 48, 4
 -- =============================================
 -- PARTICLE DATA
 -- =============================================
-local PARTICLE_COUNT = 300
+local PARTICLE_COUNT = 26
 math.randomseed(777)
 
 local pData = {}
@@ -137,7 +170,7 @@ local particles = {}
 for i = 1, PARTICLE_COUNT do
     local base  = (i / PARTICLE_COUNT) * math.pi * 2
     local angle = base + (math.random() - 0.5) * 0.55
-    local dist  = 100 + math.random() * 1000
+    local dist  = 120 + math.random() * 520
     local tx, ty = cx + math.cos(angle) * dist, cy + math.sin(angle) * dist
     local r = 2 + math.random() * 4
     local baseTr = 0.42 + math.random() * 0.44
