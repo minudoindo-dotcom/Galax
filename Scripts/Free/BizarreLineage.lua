@@ -1,4 +1,4 @@
-loadstring(game:HttpGet("https://pastebin.com/raw/bghZmR8D"))()
+loadstring(game:HttpGet("https://raw.githubusercontent.com/minudoindo-dotcom/Galax/refs/heads/main/Lib/Beta/Galax.lua"))()
 
 local Win = GalaxLib:CreateWindow({
     Title = "Bizarre Hub",
