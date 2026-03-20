@@ -5,6 +5,6 @@ GalaxHubGames = {
     },
     {
         ids = { "14890802310", "74747090658891", "77923379150463" },
-        script = "https://raw.githubusercontent.com/minudoindo-dotcom/Galax/refs/heads/main/Scripts/Free/BizarreLineage.lua"
+        script = ""
     }
 }
