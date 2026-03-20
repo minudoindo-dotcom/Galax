@@ -32,8 +32,8 @@ GalaxHubWhitelist = {
     "thehonoredih",
     "CompetitiveOrDeath",
     "lucel634n3",
-    "test",
-    "test",
+    "Naruto132qaz",
+    "lucel765V9",
     "test",
     "test",
 
