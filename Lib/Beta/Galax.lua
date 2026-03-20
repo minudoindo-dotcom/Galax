@@ -137,8 +137,8 @@ local FontWidthFactor = {
 }
 local function textW(str,sz,font) return #(str or "")*(sz or 13)*(FontWidthFactor[font or CurrentFont] or 0.54) end
 local function mpos()
-    local ok, pos = pcall(function() return game:GetService("UserInputService"):GetMouseLocation() end)
-    if ok and pos then return pos end
+    local lp=game:GetService("Players").LocalPlayer
+    if lp then local m=lp:GetMouse(); if m then return Vector2.new(m.X,m.Y) end end
     return Vector2.new(0,0)
 end
 local function over(pos,size)
@@ -197,7 +197,7 @@ function GalaxLib:CreateWindow(opts)
         MenuKey=opts.MenuKey or 0x70,
         _pos=Vector2.new(opts.X or 120,opts.Y or 100),
         _open=true, _running=true, _tabs={}, _openTab=nil,
-        _startMinimized=false, _blockInputsEnabled=true, _skipLoader=false,
+        _startMinimized=false, _blockInputsEnabled=true,
         -- Drawing system (Jade-style)
         _drawings={}, _seen={},
         -- Fade timestamps removed
@@ -393,7 +393,7 @@ function GalaxLib:CreateWindow(opts)
     end
 
     function WIN:SaveSettings()
-        local data = { theme="Galax", menuKey=self.MenuKey, startMin=self._startMinimized, blockInputs=self._blockInputsEnabled, font="UI", skipLoader=self._skipLoader or false }
+        local data = { theme="Galax", menuKey=self.MenuKey, startMin=self._startMinimized, blockInputs=self._blockInputsEnabled, font="UI" }
         for _, tab in ipairs(self._tabs) do
             if tab._isSettings then
                 for _, sec in ipairs(tab._sections) do for _, w in ipairs(sec._widgets) do
@@ -404,7 +404,6 @@ function GalaxLib:CreateWindow(opts)
         end
         pcall(makefolder, "Galax"); pcall(makefolder, "Galax/Settings")
         pcall(writefile, "Galax/Settings/Galax.json", game:GetService("HttpService"):JSONEncode(data))
-        pcall(writefile, "Galax/Settings/SkipLoader.lua", "SkipLoader = " .. (self._skipLoader and "true" or "false"))
     end
 
     function WIN:LoadSettings()
@@ -417,14 +416,12 @@ function GalaxLib:CreateWindow(opts)
         if data.startMin ~= nil then self._startMinimized = data.startMin; if data.startMin then self._open = false; pcall(setrobloxinput, true) end end
         if data.font then applyFont(data.font) end
         if data.blockInputs ~= nil then self._blockInputsEnabled = data.blockInputs; if not data.blockInputs then pcall(setrobloxinput, true) end end
-        if data.skipLoader ~= nil then self._skipLoader = data.skipLoader end
         for _, tab in ipairs(self._tabs) do if tab._isSettings then
             for _, sec in ipairs(tab._sections) do for _, w in ipairs(sec._widgets) do
                 if w.type == "dropdown" and w.label == "Change your theme" then w.value = data.theme or "Galax"
                 elseif w.type == "dropdown" and w.label == "Font" then w.value = data.font or "UI"
                 elseif w.type == "settings_toggle" and w.label == "Start Minimized" then w.value = data.startMin or false
-                elseif w.type == "settings_toggle" and w.label == "Block Inputs" then w.value = data.blockInputs ~= false
-                elseif w.type == "settings_toggle" and w.label == "Skip Loader" then w.value = data.skipLoader or false end
+                elseif w.type == "settings_toggle" and w.label == "Block Inputs" then w.value = data.blockInputs ~= false end
             end end
         end end
     end
@@ -435,7 +432,6 @@ function GalaxLib:CreateWindow(opts)
         table.insert(SMENU._widgets,{type="settings_keybind",label="Toggle Key",listening=false})
         table.insert(SMENU._widgets,{type="settings_toggle",label="Start Minimized",value=false})
         table.insert(SMENU._widgets,{type="settings_toggle",label="Block Inputs",value=true})
-        table.insert(SMENU._widgets,{type="settings_toggle",label="Skip Loader",value=false})
         table.insert(SMENU._widgets,{type="settings_kill",label="Kill Script"})
         table.insert(STAB._sections,SMENU)
         local STHEME={_name="Theme",_widgets={},_win=self}
@@ -779,8 +775,7 @@ function GalaxLib:CreateWindow(opts)
             if Input.click and not self._blockClicks and over(Vector2.new(wx,wy), Vector2.new(innerW,16)) then
                 item.value = not item.value
                 if item.label == "Start Minimized" then self._startMinimized = item.value
-                elseif item.label == "Block Inputs" then self._blockInputsEnabled = item.value; if not item.value then setrobloxinput(true) end
-                elseif item.label == "Skip Loader" then self._skipLoader = item.value end
+                elseif item.label == "Block Inputs" then self._blockInputsEnabled = item.value; if not item.value then setrobloxinput(true) end end
                 self:SaveSettings()
             end
 
