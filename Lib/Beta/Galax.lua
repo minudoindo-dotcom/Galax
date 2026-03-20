@@ -137,8 +137,8 @@ local FontWidthFactor = {
 }
 local function textW(str,sz,font) return #(str or "")*(sz or 13)*(FontWidthFactor[font or CurrentFont] or 0.54) end
 local function mpos()
-    local lp=game:GetService("Players").LocalPlayer
-    if lp then local m=lp:GetMouse(); if m then return Vector2.new(m.X,m.Y) end end
+    local ok, pos = pcall(function() return game:GetService("UserInputService"):GetMouseLocation() end)
+    if ok and pos then return pos end
     return Vector2.new(0,0)
 end
 local function over(pos,size)
@@ -404,9 +404,7 @@ function GalaxLib:CreateWindow(opts)
         end
         pcall(makefolder, "Galax"); pcall(makefolder, "Galax/Settings")
         pcall(writefile, "Galax/Settings/Galax.json", game:GetService("HttpService"):JSONEncode(data))
-        -- arquivo dedicado para os loaders lerem
-        local skipVal = self._skipLoader and "true" or "false"
-        pcall(writefile, "Galax/Settings/SkipLoader.lua", "SkipLoader = " .. skipVal)
+        pcall(writefile, "Galax/Settings/SkipLoader.lua", "SkipLoader = " .. (self._skipLoader and "true" or "false"))
     end
 
     function WIN:LoadSettings()
