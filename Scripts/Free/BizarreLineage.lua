@@ -1530,7 +1530,7 @@ task.spawn(function()
         local playBtn  = buttons and buttons:FindFirstChild("Quick Play")
 
         if playBtn then
-            task.wait(1)
+            task.wait(2)
             local targetX, targetY
             if pos_play then
                 targetX, targetY = pos_play.x, pos_play.y
