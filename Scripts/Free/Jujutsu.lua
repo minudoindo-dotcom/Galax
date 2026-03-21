@@ -1,7 +1,15 @@
 -- ════════════════════════════════════════════════════════════════
 --  Jujutsu Shenanigans
---  UI: Matcha Native
+--  UI: GalaxLib
 -- ════════════════════════════════════════════════════════════════
+
+loadstring(game:HttpGet("https://raw.githubusercontent.com/minudoindo-dotcom/Galax/refs/heads/main/Lib/Beta/Galax.lua"))()
+
+local Win = GalaxLib:CreateWindow({
+    Title   = "Jujutsu Hub",
+    Size    = Vector2.new(500, 520),
+    MenuKey = 0x70,
+})
 
 local Players     = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
@@ -17,14 +25,14 @@ local CONFIG = {
     ratioQTE     = { enabled = false, baseDelay = 0.60, minDelay = 0.40, healthFloor = 0.60 },
     charaQTE     = { enabled = false },
     perfectSwap  = { enabled = false, scanTimeout = 2.0 },
-    esp          = { enabled = false, dummy = true, items = true,
-                     box = true, name = true, distance = true, traceline = false,
-                     colorDummy = Color3.fromRGB(255, 100, 100),
-                     colorItems = Color3.fromRGB(100, 255, 100),
-                     updateRate = 60 },
+
+    esp          = { enabled = false, dummy = true, items = true },
     domainVotes     = { enabled = false },
     domainHealthESP = { enabled = false, nearbyThreshold = 40 },
 }
+
+local ESPState      = { objects = {}, lastDiscovery = 0 }
+local DomainHealthESPState = { drawings = {} }
 
 local QTEState      = { detectedKey = "", detectedTime = 0, displayDuration = 1.0 }
 local RatioState    = { rWasPressed = false, isScanning = false, scanStartTime = 0,
@@ -34,12 +42,10 @@ local RatioState    = { rWasPressed = false, isScanning = false, scanStartTime =
 local CharaQTEState = { active = false }
 local SwapState     = { rWasPressed = false, isScanning = false, scanStartTime = 0,
                         swapConfirmed = false, effectsSnapshot = {}, hasTriggeredM1 = false }
-local ESPState      = { objects = {}, lastDiscovery = 0 }
 local DomainState   = { isActive = false, trackedDomain = nil, gWasPressed = false,
                         waitingForChooseUI = false, waitStartTime = 0,
                         confessCount = 0, silenceCount = 0, denialCount = 0,
                         confessDrawing = nil, silenceDrawing = nil, denialDrawing = nil }
-local DomainHealthESPState = { drawings = {} }
 local currentPing   = 0
 local running       = true
 
@@ -129,9 +135,117 @@ local BlockMode = {
 }
 
 local DashMode = {
-    ["102567076867813"]=true,["102698645310820"]=true,["117223862448096"]=true,
-    ["134451575263988"]=true,["134581973800784"]=true,["75203303352791"]=true,
-    ["9443519528"]=true,
+    -- Misc C dashes (personagem C)
+    ["102567076867813"]=true,["102698645310820"]=true,["134451575263988"]=true,
+    -- Hiromi dodges
+    ["70593304937741"]=true,["103513893010999"]=true,["140381676724931"]=true,
+    ["111214152450580"]=true,["85003123457049"]=true,
+    -- Yuta dodges
+    ["136807071694451"]=true,["99026585086806"]=true,["97396408415659"]=true,
+    ["97803359940506"]=true,["127453446770583"]=true,
+    -- Roll
+    ["115543520504167"]=true,
+    -- Chase (avanço de melee — todos os personagens)
+    ["110978068388232"]=true,["130284226842903"]=true,["132855702748568"]=true,
+    ["134917827147266"]=true,["140597320237985"]=true,["81708642912019"]=true,
+    ["99451940496871"]=true,["130135202362252"]=true,["104148378077935"]=true,
+    ["124777463468279"]=true,["86626502434817"]=true,["128267680345523"]=true,
+    ["129392532939530"]=true,["120951759618134"]=true,["138169151223960"]=true,
+}
+
+-- SkillBlockMode: habilidades bloqueáveis confirmadas (52 IDs)
+local SkillBlockMode = {
+    -- Gojo
+    ["137865634124104"]=true, -- Lapse Blue
+    ["137654778575373"]=true, -- Reversal Red
+    -- Itadori
+    ["77200218033775"]=true,  -- Cursed Strikes
+    ["124901309160375"]=true, -- Crushing Blow (aerial)
+    -- Hakari
+    ["82541714192027"]=true,  -- Reserve Balls
+    ["72063002791216"]=true,  -- Shutter Doors
+    ["72467492674240"]=true,  -- Rough Energy
+    ["108123475959041"]=true, -- Fever Breaker
+    -- Megumi
+    ["132653290201368"]=true, -- Rabbit Escape
+    ["116432619539029"]=true, -- Toad
+    -- Mahito
+    ["89092734635186"]=true,  -- Soulfire
+    ["72475960800126"]=true,  -- Focus Strike (not blackflash)
+    -- Choso
+    ["127171275866632"]=true, -- Piercing Blood (not charged)
+    ["100446064103831"]=true, -- Blood Edge (first hit)
+    ["84039122607068"]=true,  -- Flowing Red Scale
+    -- Todo
+    ["94720627091769"]=true,  -- Swift Kick (first hit)
+    ["111720035828971"]=true, -- Pebble Throw (direct)
+    -- Hiromi
+    ["89652378115594"]=true,  -- Extended Wings
+    ["133869529005453"]=true, -- Judgment's Reach (first hit only)
+    ["135411487367370"]=true, -- Pressing Charges
+    -- Yuta
+    ["104824728032437"]=true, -- Severing Path
+    ["89582140026963"]=true,  -- Resolute Slash
+    ["88911658010897"]=true,  -- Revolve (not falling)
+    -- Mechamaru
+    ["120136894011461"]=true, -- Ultra Spin
+    ["93901924492394"]=true,  -- Ultra Cannon (not holding)
+    -- Naoya
+    ["105121164520635"]=true, -- Projection Breaker
+    ["86045680364061"]=true,  -- Decisive Strike
+    -- Nanami
+    ["81210313723714"]=true,  -- Cleaving Whirlwind (not special)
+    ["130957217409359"]=true, -- Severance Kick
+    ["100811576955331"]=true, -- Blunt Cut (not special)
+    ["113359849246757"]=true, -- Stabilize (not special)
+    -- Heian/Locust
+    ["139479927693015"]=true, -- Heian Arms
+    ["129678103897608"]=true, -- Locust Four Armed
+    ["121550561336691"]=true, -- Locust Bug Flight
+    -- Yuki
+    ["115097960689033"]=true, -- Garuda Rebound
+    ["94347210073500"]=true,  -- Rising Star
+    -- Charles
+    ["103013818601982"]=true, -- Despair (not final hit)
+    ["79860101129549"]=true,  -- Shut Up
+    -- Haruta
+    ["102053631728986"]=true, -- Trip
+    ["76957377224584"]=true,  -- Cheap Shot
+}
+
+local SkillMode = {
+    ["100446064103831"]=true,["100532748201417"]=true,["100811576955331"]=true,["101162958113766"]=true,["101617544363219"]=true,
+    ["101956908324027"]=true,["102053631728986"]=true,["102221764735089"]=true,["102764091199885"]=true,["103194057617238"]=true,
+    ["103493656287292"]=true,["103960582499076"]=true,["104749346956269"]=true,["104793932628579"]=true,["104824728032437"]=true,
+    ["105068005007692"]=true,["105121164520635"]=true,["105826208784475"]=true,["106649604455931"]=true,["107067953428369"]=true,
+    ["107554693613496"]=true,["108123475959041"]=true,["108319980293313"]=true,["108374320117834"]=true,["108695775669287"]=true,
+    ["108865650924154"]=true,["110906451704074"]=true,["111077341852080"]=true,["111593784328268"]=true,["111720035828971"]=true,
+    ["111952952886712"]=true,["112577421904593"]=true,["113722638806911"]=true,["114277419400774"]=true,["114321791577837"]=true,
+    ["115097960689033"]=true,["115561023870463"]=true,["115589615022077"]=true,["115683433001643"]=true,["116432619539029"]=true,
+    ["116811846715462"]=true,["117178057848472"]=true,["117318845383884"]=true,["117371289990421"]=true,["118076716434659"]=true,
+    ["118326207788271"]=true,["118607369830566"]=true,["120136894011461"]=true,["120319825505172"]=true,["120480195428173"]=true,
+    ["120914276661831"]=true,["121343824534765"]=true,["121923107958102"]=true,["121984128639453"]=true,["122607727974119"]=true,
+    ["123167492985370"]=true,["124243904748268"]=true,["124340599144108"]=true,["124759375124281"]=true,["124901309160375"]=true,
+    ["127171275866632"]=true,["127727754867974"]=true,["127843796051633"]=true,["128537969081721"]=true,["128779949980528"]=true,
+    ["129132347098646"]=true,["130957217409359"]=true,["131219281339199"]=true,["131506102901134"]=true,["131826588098422"]=true,
+    ["131948591638044"]=true,["132281807148575"]=true,["132653290201368"]=true,["132704398648016"]=true,["132725601768618"]=true,
+    ["132748613906344"]=true,["132754851925571"]=true,["132928484483887"]=true,["134777193523837"]=true,["135411487367370"]=true,
+    ["135894053646223"]=true,["136161556678024"]=true,["137007125977081"]=true,["137451357351000"]=true,["137611726964398"]=true,
+    ["137638103122538"]=true,["137654778575373"]=true,["137865634124104"]=true,["139956651661073"]=true,["70840150456007"]=true,
+    ["70890372338556"]=true,["72063002791216"]=true,["72157009600725"]=true,["72343192576784"]=true,["72424828296871"]=true,
+    ["72467492674240"]=true,["72475960800126"]=true,["72932825817330"]=true,["72933571933445"]=true,["73048386765082"]=true,
+    ["73482562876920"]=true,["75390215999547"]=true,["75736902190737"]=true,["76313364850487"]=true,["76519264603956"]=true,
+    ["76957377224584"]=true,["77200218033775"]=true,["77323960817460"]=true,["77833820443705"]=true,["78453184359132"]=true,
+    ["78578012001859"]=true,["79717812541463"]=true,["79860101129549"]=true,["80465501985014"]=true,["80922461169812"]=true,
+    ["81112033595734"]=true,["81210313723714"]=true,["81953935260783"]=true,["81971779090581"]=true,["82149987460883"]=true,
+    ["82541714192027"]=true,["82987093810211"]=true,["84039122607068"]=true,["84716311536982"]=true,["85024950165903"]=true,
+    ["85569553424083"]=true,["86045680364061"]=true,["86073608599582"]=true,["86362077638309"]=true,["86618245908620"]=true,
+    ["87472283043607"]=true,["87481059409847"]=true,["88005970155216"]=true,["88215274584883"]=true,["88911658010897"]=true,
+    ["89092734635186"]=true,["89582140026963"]=true,["89652378115594"]=true,["89677028738408"]=true,["89888040037257"]=true,
+    ["90781290293652"]=true,["91984445049000"]=true,["92081142332466"]=true,["92529934565092"]=true,["92595499555055"]=true,
+    ["93796567192197"]=true,["94223344057046"]=true,["94347210073500"]=true,["94590184881876"]=true,["94616006376147"]=true,
+    ["94720627091769"]=true,["95097480425566"]=true,["95421145178968"]=true,["95494223368246"]=true,["95901746347992"]=true,
+    ["96047028540271"]=true,["96397814657727"]=true,["96466374346823"]=true,
 }
 
 local KEY_F           = 0x46
@@ -139,10 +253,12 @@ local KEY_3           = 0x33
 local KEY_G           = 0x47
 local BLOCK_RANGE     = 8
 local DASH_RANGE      = 15
+local SKILL_RANGE     = 15
 local BLOCK_HOLD_TIME = 0.25
 
 _G.AutoBlock_Enabled        = false
 _G.AutoBlockDash_Enabled    = false
+_G.AutoSkillBlock_Enabled   = false
 _G.AutoCounter_Enabled      = false
 _G.AwakeningCounter_Enabled = false
 
@@ -383,192 +499,6 @@ local function RunCharaQTE()
     CharaQTEState.active = false
 end
 
--- ── ESP inline (box + name + distance + traceline) ──────────────
-
-local function espCreate(part, label, color)
-    local e = {
-        part  = part,
-        label = label,
-        color = color,
-        box   = Drawing.new("Square"),
-        name  = Drawing.new("Text"),
-        dist  = Drawing.new("Text"),
-        line  = Drawing.new("Line"),
-    }
-    e.box.Filled=false; e.box.Thickness=1; e.box.Visible=false; e.box.ZIndex=5
-    e.name.Center=true; e.name.Outline=true; e.name.Font=Drawing.Fonts.SystemBold
-    e.name.Size=13; e.name.Visible=false; e.name.ZIndex=5
-    e.dist.Center=true; e.dist.Outline=true; e.dist.Font=Drawing.Fonts.UI
-    e.dist.Size=11; e.dist.Color=Color3.fromRGB(200,200,200); e.dist.Visible=false; e.dist.ZIndex=5
-    e.line.Thickness=1; e.line.Visible=false; e.line.ZIndex=5
-    return e
-end
-
-local function espDestroy(e)
-    if not e then return end
-    e.box:Remove(); e.name:Remove(); e.dist:Remove(); e.line:Remove()
-end
-
-local function espHide(e)
-    if not e then return end
-    e.box.Visible=false; e.name.Visible=false
-    e.dist.Visible=false; e.line.Visible=false
-end
-
-local function espUpdate(e, myPos)
-    if not e or not e.part or not e.part.Parent then espHide(e); return end
-    local ok, pos = pcall(function() return e.part.Position end)
-    if not ok or not pos then espHide(e); return end
-    local okS, sp, onScreen = pcall(WorldToScreen, pos + Vector3.new(0, 1, 0))
-    if not okS or not sp or not onScreen then espHide(e); return end
-
-    local dist  = math.floor((myPos - pos).Magnitude)
-    local boxH  = math.clamp(1000 / math.max(dist, 1), 10, 200)
-    local boxW  = boxH * 0.6
-    local col   = e.color
-
-    if CONFIG.esp.box then
-        e.box.Position = Vector2.new(sp.X - boxW/2, sp.Y - boxH/2)
-        e.box.Size     = Vector2.new(boxW, boxH)
-        e.box.Color    = col; e.box.Visible = true
-    else e.box.Visible = false end
-
-    if CONFIG.esp.name then
-        e.name.Text     = e.label
-        e.name.Color    = col
-        e.name.Position = Vector2.new(sp.X, sp.Y - boxH/2 - 14)
-        e.name.Visible  = true
-    else e.name.Visible = false end
-
-    if CONFIG.esp.distance then
-        e.dist.Text     = dist .. "m"
-        e.dist.Position = Vector2.new(sp.X, sp.Y + boxH/2 + 2)
-        e.dist.Visible  = true
-    else e.dist.Visible = false end
-
-    if CONFIG.esp.traceline then
-        local cam   = workspace.CurrentCamera
-        local scrH  = cam and cam.ViewportSize.Y or 600
-        e.line.From    = Vector2.new(sp.X, scrH)
-        e.line.To      = Vector2.new(sp.X, sp.Y)
-        e.line.Color   = col; e.line.Visible = true
-    else e.line.Visible = false end
-end
-
-local function RemoveESPDrawing(espObj)
-    if espObj then espDestroy(espObj) end
-end
-
-local function UpdateESPPositions()
-    local myHrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-    local myPos = myHrp and myHrp.Position or Vector3.new(0,0,0)
-    if not CONFIG.esp.enabled then
-        for _, e in pairs(ESPState.objects) do espHide(e) end
-        return
-    end
-    for key, e in pairs(ESPState.objects) do
-        local typeEnabled = (e.type == "dummy" and CONFIG.esp.dummy)
-                         or (e.type == "item"  and CONFIG.esp.items)
-        if not typeEnabled then
-            espHide(e)
-        elseif not e.part or not e.part.Parent then
-            espDestroy(e); ESPState.objects[key] = nil
-        else
-            e.color = e.type == "dummy" and CONFIG.esp.colorDummy or CONFIG.esp.colorItems
-            espUpdate(e, myPos)
-        end
-    end
-end
-
-local function DiscoverDummy()
-    local key      = "dummy_character"
-    local existing = ESPState.objects[key]
-    if existing then
-        if existing.part and existing.part.Parent then return end
-        espDestroy(existing); ESPState.objects[key] = nil
-    end
-    local dummy = SafeFind(workspace, "Characters", "Dummy")
-    if dummy then
-        local part = dummy:FindFirstChild("HumanoidRootPart") or dummy:FindFirstChild("Head")
-        if part then
-            ESPState.objects[key] = espCreate(part, "Dummy", CONFIG.esp.colorDummy)
-            ESPState.objects[key].type = "dummy"
-        end
-    end
-end
-
-local function DiscoverItems()
-    local items = workspace:FindFirstChild("Items")
-    if not items then return end
-    for _, item in ipairs(items:GetChildren()) do
-        local key = tostring(item.Address or item.Name)
-        if not ESPState.objects[key] then
-            local part = item:FindFirstChildWhichIsA("BasePart") or item
-            if part then
-                local e = espCreate(part, item.Name, CONFIG.esp.colorItems)
-                e.type = "item"
-                ESPState.objects[key] = e
-            end
-        end
-    end
-    for key, e in pairs(ESPState.objects) do
-        if e.type == "item" and (not e.part or not e.part.Parent) then
-            espDestroy(e); ESPState.objects[key] = nil
-        end
-    end
-end
-
-local function DiscoverESPObjects()
-    if not CONFIG.esp.enabled then return end
-    DiscoverDummy()
-    DiscoverItems()
-end
-
-local function UpdateDomainHealthESP()
-    if not CONFIG.domainHealthESP.enabled then
-        for _, entry in pairs(DomainHealthESPState.drawings) do
-            if entry.drawing then entry.drawing.Visible = false end
-        end
-        return
-    end
-    local myPos = GetPlayerPosition()
-    local domains = workspace:FindFirstChild("Domains")
-    if not domains then return end
-    local seen = {}
-    for _, domain in ipairs(domains:GetChildren()) do
-        local key = tostring(domain.Address or domain.Name)
-        seen[key] = true
-        local hp = domain:FindFirstChild("Health") or domain:FindFirstChild("HP")
-        local part = domain:FindFirstChildWhichIsA("BasePart")
-        if hp and part then
-            local dist = myPos and getMagnitude(part.Position, myPos) or math.huge
-            if dist <= CONFIG.domainHealthESP.nearbyThreshold then
-                if not DomainHealthESPState.drawings[key] then
-                    local d = Drawing.new("Text")
-                    d.Font = Drawing.Fonts.System; d.Outline = true
-                    d.Center = true; d.Visible = false
-                    DomainHealthESPState.drawings[key] = { drawing = d, domain = domain, part = part }
-                end
-                local entry = DomainHealthESPState.drawings[key]
-                local screenPos, onScreen = WorldToScreen(part.Position + Vector3.new(0, 3, 0))
-                entry.drawing.Visible = onScreen
-                if onScreen then
-                    local hpVal = tonumber(hp.Value) or 0
-                    entry.drawing.Text = domain.Name .. " HP: " .. math.floor(hpVal)
-                    entry.drawing.Color = Color3.fromRGB(255, 80, 80)
-                    entry.drawing.Position = screenPos
-                end
-            end
-        end
-    end
-    for key, entry in pairs(DomainHealthESPState.drawings) do
-        if not seen[key] then
-            if entry.drawing then entry.drawing:Remove() end
-            DomainHealthESPState.drawings[key] = nil
-        end
-    end
-end
-
 local function HasChooseUI()
     return SafeFind(LocalPlayer, "PlayerGui", "Domain", "Choose") ~= nil
 end
@@ -806,96 +736,498 @@ end
 local blockTriggered = false
 local dashTriggered  = false
 local blockStart     = 0
-local dashStart      = 0
 
 -- ════════════════════════════════════════════════════════════════
 --  MATCHA UI
 -- ════════════════════════════════════════════════════════════════
 
-UI.AddTab("Defense", function(tab)
-    local def = tab:Section("Auto Defense", "Left")
-    def:Toggle("auto_block",     "Auto Block",       false, function(v) _G.AutoBlock_Enabled        = v end)
-    def:Toggle("auto_blockdash", "Auto Block Dash",  false, function(v) _G.AutoBlockDash_Enabled    = v end)
-    def:Toggle("auto_counter",   "Auto Counter",     false, function(v)
-        _G.AutoCounter_Enabled = v
-        if v then task.spawn(function() task.wait(0.5) checkEquippedAbilities() end) end
-    end)
-    def:Toggle("awaken_counter", "Awakening Counter", false, function(v)
-        _G.AwakeningCounter_Enabled = v
-        if v then task.spawn(function() task.wait(0.5) checkEquippedAbilities() end) end
-    end)
+-- ── UI (GalaxLib) ────────────────────────────────────────────────
 
-    local cfg = tab:Section("Config", "Right")
-    cfg:SliderInt("block_range", "Block Range",  1, 30, 8,  function(v) BLOCK_RANGE     = v end)
-    cfg:SliderInt("dash_range",  "Dash Range",   1, 30, 15, function(v) DASH_RANGE      = v end)
-    cfg:SliderFloat("hold_time", "Hold Time", 0.05, 1.0, 0.25, "%.2f", function(v) BLOCK_HOLD_TIME = v end)
+local DefenseTab = Win:AddTab("Defense")
+local DefSec     = DefenseTab:AddSection("Auto Defense")
+
+DefSec:AddToggle("Auto Block",       false, function(v) _G.AutoBlock_Enabled        = v end)
+DefSec:AddToggle("Auto Block Dash",  false, function(v) _G.AutoBlockDash_Enabled    = v end)
+DefSec:AddToggle("Auto Skill Block", false, function(v) _G.AutoSkillBlock_Enabled   = v end)
+DefSec:AddToggle("Auto Counter",     false, function(v)
+    _G.AutoCounter_Enabled = v
+    if v then task.spawn(function() task.wait(0.5) checkEquippedAbilities() end) end
+end)
+DefSec:AddToggle("Awakening Counter", false, function(v)
+    _G.AwakeningCounter_Enabled = v
+    if v then task.spawn(function() task.wait(0.5) checkEquippedAbilities() end) end
 end)
 
-UI.AddTab("Automation", function(tab)
-    local qte = tab:Section("Defense Attorney (Auto QTE)", "Left")
-    qte:Toggle("auto_qte", "Auto QTE", false, function(v) CONFIG.autoQTE.enabled = v end)
-    qte:SliderFloat("qte_delay",     "Post Press Delay", 0.0, 1.0, 0.30, "%.2f", function(v) CONFIG.autoQTE.postPressDelay = v end)
-    qte:SliderFloat("qte_deviation", "Deviation",        0.0, 0.3, 0.0,  "%.2f", function(v) CONFIG.autoQTE.deviation      = v end)
+local AutoTab   = Win:AddTab("Automation")
+local QTESec    = AutoTab:AddSection("Defense Attorney")
+local RatioSec  = AutoTab:AddSection("Nanami")
+local SwapSec   = AutoTab:AddSection("Todo")
+local CharaSec  = AutoTab:AddSection("Chara")
+local DomainSec = AutoTab:AddSection("Hiromi")
 
-    local ratio = tab:Section("Nanami (Ratio QTE)", "Left")
-    ratio:Toggle("auto_ratio", "Auto Ratio QTE", false, function(v)
-        CONFIG.ratioQTE.enabled = v
-        if not v then
-            RatioState.trackedTarget     = nil
-            RatioState.trackedRatioValue = nil
-            RatioState.isScanning        = false
-            RatioState.hasTriggered      = false
+QTESec:AddToggle("Auto QTE", false, function(v) CONFIG.autoQTE.enabled = v end)
+RatioSec:AddToggle("Auto Ratio QTE", false, function(v)
+    CONFIG.ratioQTE.enabled = v
+    if not v then
+        RatioState.trackedTarget     = nil
+        RatioState.trackedRatioValue = nil
+        RatioState.isScanning        = false
+        RatioState.hasTriggered      = false
+    end
+end)
+SwapSec:AddToggle("Auto Perfect Swap", false, function(v)
+    CONFIG.perfectSwap.enabled = v
+    if not v then ResetSwapState() end
+end)
+CharaSec:AddToggle("Auto Chara QTE", false, function(v)
+    CONFIG.charaQTE.enabled = v
+    if not v then CharaQTEState.active = false end
+end)
+DomainSec:AddToggle("Vote Tracker", false, function(v)
+    CONFIG.domainVotes.enabled = v
+    if not v then ResetDomainState() end
+end)
+
+local ESPTab      = Win:AddTab("ESP")
+local ESPSec      = ESPTab:AddSection("ESP Settings")
+local DomainHPSec = ESPTab:AddSection("Domain Health")
+
+ESPSec:AddToggle("Enable ESP",  false, function(v)
+    CONFIG.esp.enabled = v
+    if not v then for _, e in pairs(ESPState.objects) do espHideAll(e) end end
+end)
+ESPSec:AddToggle("Dummy ESP",   true,  function(v) CONFIG.esp.dummy       = v end)
+ESPSec:AddToggle("Items ESP",   true,  function(v) CONFIG.esp.items       = v end)
+ESPSec:AddToggle("Box",         true,  function(v) _espCFG.box            = v end)
+ESPSec:AddToggle("Name",        true,  function(v) _espCFG.name           = v end)
+ESPSec:AddToggle("Distance",    true,  function(v) _espCFG.distance       = v end)
+ESPSec:AddToggle("Traceline",   false, function(v) _espCFG.traceline      = v end)
+DomainHPSec:AddToggle("Domain Health ESP", false, function(v)
+    CONFIG.domainHealthESP.enabled = v
+    if not v then
+        for _, entry in pairs(DomainHealthESPState.drawings) do
+            if entry.drawing then entry.drawing.Visible = false end
         end
-    end)
-    ratio:SliderFloat("ratio_base",  "Base Delay",   0.1, 2.0, 0.60, "%.2f", function(v) CONFIG.ratioQTE.baseDelay   = v end)
-    ratio:SliderFloat("ratio_min",   "Min Delay",    0.1, 1.0, 0.40, "%.2f", function(v) CONFIG.ratioQTE.minDelay    = v end)
-    ratio:SliderFloat("ratio_floor", "Health Floor", 0.1, 1.0, 0.60, "%.2f", function(v) CONFIG.ratioQTE.healthFloor = v end)
-
-    local swap = tab:Section("Todo (Perfect Swap)", "Right")
-    swap:Toggle("auto_swap", "Auto Perfect Swap", false, function(v)
-        CONFIG.perfectSwap.enabled = v
-        if not v then ResetSwapState() end
-    end)
-    swap:SliderFloat("swap_timeout", "Scan Timeout", 0.5, 5.0, 2.0, "%.1f", function(v) CONFIG.perfectSwap.scanTimeout = v end)
-
-    local chara = tab:Section("Chara QTE", "Right")
-    chara:Toggle("auto_chara", "Auto Chara QTE", false, function(v)
-        CONFIG.charaQTE.enabled = v
-        if not v then CharaQTEState.active = false end
-    end)
-
-    local domain = tab:Section("Hiromi (Domain Votes)", "Right")
-    domain:Toggle("domain_votes", "Vote Tracker", false, function(v)
-        CONFIG.domainVotes.enabled = v
-        if not v then ResetDomainState() end
-    end)
+    end
 end)
 
-UI.AddTab("ESP", function(tab)
-    local esp = tab:Section("Item / Dummy ESP", "Left")
-    esp:Toggle("esp_on",       "Enable ESP",  false, function(v)
-        CONFIG.esp.enabled = v
-        if not v then for _, e in pairs(ESPState.objects) do espHide(e) end end
-    end)
-    esp:Toggle("esp_dummy",    "Dummy ESP",   true,  function(v) CONFIG.esp.dummy    = v end)
-    esp:Toggle("esp_items",    "Items ESP",   true,  function(v) CONFIG.esp.items    = v end)
-    esp:Toggle("esp_box",      "Box",         true,  function(v) CONFIG.esp.box      = v end)
-    esp:Toggle("esp_name",     "Name",        true,  function(v) CONFIG.esp.name     = v end)
-    esp:Toggle("esp_distance", "Distance",    true,  function(v) CONFIG.esp.distance = v end)
-    esp:Toggle("esp_traceline","Traceline",   false, function(v) CONFIG.esp.traceline= v end)
-    esp:SliderInt("esp_fps",   "Update FPS",  10, 120, 60, function(v) CONFIG.esp.updateRate = v end)
+Win:Notify("Jujutsu Hub", "Whymayko", 3)
 
-    local dhp = tab:Section("Domain Health ESP", "Right")
-    dhp:Toggle("domain_hp_esp", "Domain Health ESP", false, function(v)
-        CONFIG.domainHealthESP.enabled = v
-        if not v then
-            for _, entry in pairs(DomainHealthESPState.drawings) do
-                if entry.drawing then entry.drawing.Visible = false end
+
+
+
+-- ── ESP — detecção antiga + visual estilo Bizarre ───────────────
+
+local _espCFG = {
+    box       = true,
+    name      = true,
+    distance  = true,
+    traceline = false,
+}
+
+-- Visual: cria box + nome + dist + linha para um objeto
+local function espMakeDrawings(label, col)
+    local e = {}
+    e.label = label
+    e.col   = col
+    -- box
+    e.box           = Drawing.new("Square")
+    e.box.Filled    = false; e.box.Thickness = 1
+    e.box.Visible   = false; e.box.ZIndex    = 5
+    -- nome
+    e.name          = Drawing.new("Text")
+    e.name.Center   = true;  e.name.Outline  = true
+    e.name.Font     = Drawing.Fonts.System
+    e.name.Size     = 14;    e.name.ZIndex   = 5
+    e.name.Visible  = false
+    -- distância
+    e.dist          = Drawing.new("Text")
+    e.dist.Center   = true;  e.dist.Outline  = true
+    e.dist.Font     = Drawing.Fonts.System
+    e.dist.Size     = 12;    e.dist.ZIndex   = 5
+    e.dist.Color    = Color3.fromRGB(200, 200, 200)
+    e.dist.Visible  = false
+    -- traceline
+    e.line          = Drawing.new("Line")
+    e.line.Thickness= 1;     e.line.Visible  = false
+    e.line.ZIndex   = 5
+    return e
+end
+
+local function espDestroyDrawings(e)
+    if not e then return end
+    if e.box  then e.box:Remove()  end
+    if e.name then e.name:Remove() end
+    if e.dist then e.dist:Remove() end
+    if e.line then e.line:Remove() end
+end
+
+local function espHideAll(e)
+    if not e then return end
+    e.box.Visible  = false; e.name.Visible = false
+    e.dist.Visible = false; e.line.Visible = false
+end
+
+local function espUpdate(e, myPos, part)
+    if not part or not part.Parent then espHideAll(e); return end
+    local pos = part.Position
+    local sp, onScreen = WorldToScreen(pos + Vector3.new(0, 1, 0))
+    if not onScreen or not sp then espHideAll(e); return end
+
+    local dist = math.floor((myPos - pos).Magnitude)
+    local boxH = math.clamp(1000 / math.max(dist, 1), 10, 200)
+    local boxW = boxH * 0.6
+    local col  = e.col
+
+    -- box
+    if _espCFG.box then
+        e.box.Position = Vector2.new(sp.X - boxW/2, sp.Y - boxH/2)
+        e.box.Size     = Vector2.new(boxW, boxH)
+        e.box.Color    = col; e.box.Visible = true
+    else e.box.Visible = false end
+
+    -- nome
+    if _espCFG.name then
+        e.name.Text     = e.label
+        e.name.Color    = col
+        e.name.Position = Vector2.new(sp.X, sp.Y - boxH/2 - 16)
+        e.name.Visible  = true
+    else e.name.Visible = false end
+
+    -- distância
+    if _espCFG.distance then
+        e.dist.Text     = dist .. "m"
+        e.dist.Position = Vector2.new(sp.X, sp.Y + boxH/2 + 2)
+        e.dist.Visible  = true
+    else e.dist.Visible = false end
+
+    -- traceline
+    if _espCFG.traceline then
+        local scrH = workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize.Y or 600
+        e.line.From  = Vector2.new(sp.X, scrH)
+        e.line.To    = Vector2.new(sp.X, sp.Y)
+        e.line.Color = col; e.line.Visible = true
+    else e.line.Visible = false end
+end
+
+-- Detecção: lógica original funcional do JujutsuBeta
+local function RemoveESPDrawing(espObj)
+    if espObj then espDestroyDrawings(espObj) end
+end
+
+local function ClearAllESP()
+    for _, espObj in pairs(ESPState.objects) do RemoveESPDrawing(espObj) end
+    ESPState.objects = {}
+end
+
+local function UpdateESPPositions()
+    if not CONFIG.esp.enabled then
+        for _, e in pairs(ESPState.objects) do espHideAll(e) end
+        return
+    end
+    local myHrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+    local myPos = myHrp and myHrp.Position or Vector3.new(0, 0, 0)
+    for _, e in pairs(ESPState.objects) do
+        local isEnabled = (e.type == "dummy" and CONFIG.esp.dummy)
+                       or (e.type == "item"  and CONFIG.esp.items)
+        if not isEnabled then
+            espHideAll(e)
+        elseif e.part and e.part.Parent then
+            espUpdate(e, myPos, e.part)
+        else
+            espHideAll(e)
+        end
+    end
+end
+
+local function DiscoverDummy()
+    local dummyKey = "dummy_character"
+    if ESPState.objects[dummyKey] then
+        local espObj = ESPState.objects[dummyKey]
+        if not espObj.part or not espObj.part.Parent then
+            RemoveESPDrawing(espObj); ESPState.objects[dummyKey] = nil
+        else return end
+    end
+    local dummy = SafeFind(workspace, "Characters", "Dummy")
+    if not dummy then return end
+    local hrp = dummy:FindFirstChild("HumanoidRootPart")
+    if not hrp then return end
+    local e = espMakeDrawings("Dummy", Color3.fromRGB(255, 100, 100))
+    e.type = "dummy"; e.part = hrp; e.instance = dummy
+    ESPState.objects[dummyKey] = e
+end
+
+local function DiscoverItems()
+    local itemsFolder = SafeFind(workspace, "Items")
+    if not itemsFolder then return end
+    local seenAddresses = {}
+    for _, item in ipairs(itemsFolder:GetChildren()) do
+        if item:IsA("Part") or item:IsA("MeshPart") then
+            local address = item.Address; seenAddresses[address] = true
+            if not ESPState.objects[address] then
+                local e = espMakeDrawings(item.Name, Color3.fromRGB(100, 255, 100))
+                e.type = "item"; e.part = item; e.instance = item
+                ESPState.objects[address] = e
             end
         end
-    end)
-    dhp:SliderInt("domain_threshold", "Nearby Threshold", 5, 200, 40, function(v) CONFIG.domainHealthESP.nearbyThreshold = v end)
-end)
+    end
+    for address, espObj in pairs(ESPState.objects) do
+        if espObj.type == "item" and not seenAddresses[address] then
+            RemoveESPDrawing(espObj); ESPState.objects[address] = nil
+        end
+    end
+end
+
+local function DiscoverESPObjects() pcall(DiscoverDummy) pcall(DiscoverItems) end
+
+local function UpdateDomainHealthESP()
+    if not CONFIG.domainHealthESP.enabled then
+        for _, entry in pairs(DomainHealthESPState.drawings) do
+            if entry.drawing then entry.drawing.Visible = false end
+        end
+    end
+end
+
+-- ════════════════════════════════════════════════════════════════
+--  SOUND IDs para Auto Block (via memory_read como RivalsRage)
+-- ════════════════════════════════════════════════════════════════
+
+-- M1 hits normais (som universal de soco)
+local NormalHitSounds = {
+    ["8595975878"]=true,  -- hit padrao (Gojo, Itadori, Choso, Hakari, Todo, Goku)
+    ["8595975458"]=true,  -- hit fraco
+    ["8595974357"]=true,  -- hit final
+    ["4571259077"]=true,  -- Fist (soco universal detectado ao vivo)
+    ["3932145123"]=true,  -- Mahoraga hit1
+    ["3932145654"]=true,  -- Mahoraga hit2
+    ["3848125583"]=true,  -- Mahoraga hit3
+}
+
+-- M1 hits especiais por personagem
+local SpecialHitSounds = {
+    -- Hiromi
+    ["89850070587619"]=true,["139739650563219"]=true,
+    ["114146716369211"]=true,["89079427123853"]=true,
+    -- Nanami
+    ["91344226850535"]=true,["91019449442779"]=true,
+    ["139826126503063"]=true,["135674501661535"]=true,
+    -- Charles
+    ["94107281648467"]=true,["103563218704266"]=true,
+    -- Haruta
+    ["73369470591089"]=true,["129306040953825"]=true,["133798286166675"]=true,
+    -- MeiMei
+    ["133341853236210"]=true,["125024159587132"]=true,
+    ["136328533963688"]=true,["139804351541539"]=true,
+    -- Yuta
+    ["88685272276380"]=true,["83770717073727"]=true,["74317472561001"]=true,
+    -- Mechamaru Absolute
+    ["130079449462583"]=true,["102360793155474"]=true,
+    ["89651789530111"]=true,["100238850813671"]=true,
+}
+
+local SOUNDID_OFFSET = 224
+
+local function readSoundIdFromAddr(addr)
+    if not addr or addr <= 4096 then return nil end
+    local ok, ptr = pcall(memory_read, "uintptr_t", addr + SOUNDID_OFFSET)
+    if not ok or not ptr or ptr <= 4096 then return nil end
+    local ok2, s = pcall(memory_read, "string", ptr)
+    if not ok2 or not s then return nil end
+    return s:match("%d+")
+end
+
+-- Varre os sons do HumanoidRootPart via Players (onde o som é gerado)
+local function getActiveSoundsFromChar(char)
+    -- pega o player pelo nome do character para acessar Players.Nome.HumanoidRootPart
+    local playerName = char.Name
+    local p = Players:FindFirstChild(playerName)
+    local hrp = p and p:FindFirstChild("HumanoidRootPart")
+             or char:FindFirstChild("HumanoidRootPart")
+    if not hrp then return {} end
+    local sounds = {}
+    for _, obj in ipairs(hrp:GetChildren()) do
+        if obj.ClassName == "Sound" then
+            local addr = obj.Address
+            if addr and addr > 4096 then
+                local id = readSoundIdFromAddr(addr)
+                if id then sounds[id] = true end
+            end
+        end
+    end
+    return sounds
+end
+
+local function checkSoundBlock(char)
+    local sounds = getActiveSoundsFromChar(char)
+    for id in pairs(sounds) do
+        if NormalHitSounds[id] or SpecialHitSounds[id] then
+            return true
+        end
+    end
+    return false
+end
+
+-- Sons de dash detectados ao vivo
+local DashSounds = {
+    ["3929467229"]=true, -- Misc.Dash
+    ["4909206080"]=true, -- Misc.Chase
+    ["114900496731174"]=true, -- Misc.Evade
+    ["83048216359043"]=true,  -- Hiromi.Dodges
+    ["1295446488"]=true, -- S.Dash
+    ["1295456280"]=true, -- S.Dash2
+    ["17046281380"]=true, -- Hakari.OverLuck.Dash
+    ["17101065425"]=true, -- Hakari.FeverBreak.Dash
+    ["17169364965"]=true, -- Hakari.EnergySurge.Dash
+    ["3755636152"]=true,  -- Choso.BloodEdge.Dash
+    ["115254148621223"]=true, -- Nanami.BluntCut.Dash
+    ["140170031367282"]=true, -- Mechamaru.UltraSpin.Dash
+    ["92456342640262"]=true,  -- Yuki.Mass.Dash
+    ["115290636129284"]=true, -- Nanami.RatioBreaker.RB4.Dash
+}
+
+-- Sons de skills bloqueáveis (74 IDs)
+local SkillBlockSounds = {
+    ["102930929366058"]=true,["103563218704266"]=true,["104749346956269"]=true,
+    ["104824728032437"]=true,["104974135649084"]=true,["105213688680216"]=true,
+    ["109864853124500"]=true,["111720035828971"]=true,["111770082377892"]=true,
+    ["112016169570826"]=true,["112176479612273"]=true,["113403339442588"]=true,
+    ["115026144285429"]=true,["116070235847840"]=true,["116622642632294"]=true,
+    ["117954571666770"]=true,["121354995604661"]=true,["124532419231032"]=true,
+    ["125025280611426"]=true,["125037643044310"]=true,["130667216707870"]=true,
+    ["132547948177910"]=true,["132548164020742"]=true,["132826787704625"]=true,
+    ["132856141242580"]=true,["135411487367370"]=true,["135423939868890"]=true,
+    ["140443001346012"]=true,["154787303"]=true,["16773286330"]=true,
+    ["16773286492"]=true,["17046281074"]=true,["17046282624"]=true,
+    ["17046505673"]=true,["17101065020"]=true,["17101065238"]=true,
+    ["17169364647"]=true,["17169365111"]=true,["17169365331"]=true,
+    ["17206057404"]=true,["17269355114"]=true,["17392238265"]=true,
+    ["17392240969"]=true,["18259558246"]=true,["3742310026"]=true,
+    ["3755636152"]=true,["3755636638"]=true,["3932141920"]=true,
+    ["411286671"]=true,["4459570664"]=true,["6881026094"]=true,
+    ["72700191895039"]=true,["72894267845813"]=true,["7307838125"]=true,
+    ["7512928742"]=true,["76957377224584"]=true,["77439795464226"]=true,
+    ["78400218029025"]=true,["79490575410915"]=true,["83883449987100"]=true,
+    ["84039122607068"]=true,["84086575329798"]=true,["84674642106437"]=true,
+    ["858508159"]=true,["89652378115594"]=true,["9066732918"]=true,
+    ["9114427348"]=true,["9116684884"]=true,["9118614717"]=true,
+    ["92772409642805"]=true,["94107281648467"]=true,["94132201322663"]=true,
+    ["94720627091769"]=true,["97479273744599"]=true,
+}
+
+local function checkSoundSkill(char)
+    local sounds = getActiveSoundsFromChar(char)
+    for id in pairs(sounds) do
+        if SkillBlockSounds[id] then return true end
+    end
+    return false
+end
+
+local function checkSoundDash(char)
+    local sounds = getActiveSoundsFromChar(char)
+    for id in pairs(sounds) do
+        if DashSounds[id] then return true end
+    end
+    return false
+end
+
+-- ════════════════════════════════════════════════════════════════
+--  ANIM DETECTOR — mostra IDs de animações na tela por categoria
+-- ════════════════════════════════════════════════════════════════
+
+local AnimDetector = {
+    enabled  = false,
+    range    = 15,
+    labels   = {},
+}
+
+local ANIM_CATEGORIES = {
+    { name = "Block",  mode = BlockMode,      color = Color3.fromRGB(100, 200, 255) },
+    { name = "Dash",   mode = DashMode,       color = Color3.fromRGB(255, 220, 80)  },
+    { name = "Skill",  mode = SkillBlockMode, color = Color3.fromRGB(255, 100, 100) },
+}
+
+-- cria labels de texto para o detector
+local function animDetectorCreate()
+    for i = 1, 12 do
+        local d = Drawing.new("Text")
+        d.Font = Drawing.Fonts.SystemBold
+        d.Size = 13; d.Outline = true; d.Visible = false
+        d.Position = Vector2.new(10, 250 + (i - 1) * 18)
+        AnimDetector.labels[i] = d
+    end
+end
+
+local function animDetectorHide()
+    for _, d in ipairs(AnimDetector.labels) do d.Visible = false end
+end
+
+local function animDetectorUpdate()
+    if not AnimDetector.enabled then animDetectorHide(); return end
+    local myChar = LocalPlayer and LocalPlayer.Character
+    local myRoot = myChar and (myChar:FindFirstChild("HumanoidRootPart") or myChar:FindFirstChild("Torso"))
+    if not myRoot then animDetectorHide(); return end
+
+    local entries = {}
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p == LocalPlayer or not p.Character then continue end
+        local theirRoot = p.Character:FindFirstChild("HumanoidRootPart") or p.Character:FindFirstChild("Torso")
+        if not theirRoot then continue end
+        local dist = getMagnitude(theirRoot.Position, myRoot.Position)
+        if dist > AnimDetector.range then continue end
+
+        local ids = {}
+        local animator = getAnimator(p.Character)
+        if animator then
+            local head = readPtr(animator + KnownOffsets.ActiveAnimations)
+            if head then
+                local first = readPtr(head)
+                if first and first ~= head then
+                    local curr = first; local iter = 0
+                    while curr and curr ~= 0 and curr ~= head and iter < 64 do
+                        iter = iter + 1
+                        local track = readPtr(curr + KnownOffsets.NodeNext)
+                        if track and getClass(track) == "AnimationTrack" then
+                            local anim = readPtr(track + KnownOffsets.Animation)
+                            if anim and getClass(anim) == "Animation" then
+                                local idPtr = readPtr(anim + KnownOffsets.AnimationId)
+                                local idStr = readStr(idPtr)
+                                if idStr and idStr ~= "N/A" then
+                                    local clean = idStr:match("%d+") or idStr
+                                    ids[#ids+1] = clean
+                                end
+                            end
+                        end
+                        curr = readPtr(curr)
+                    end
+                end
+            end
+        end
+
+        for _, id in ipairs(ids) do
+            local cat = "Unknown"
+            local col = Color3.fromRGB(180, 180, 180)
+            for _, c in ipairs(ANIM_CATEGORIES) do
+                if c.mode[id] then cat = c.name; col = c.color; break end
+            end
+            entries[#entries+1] = {
+                text  = string.format("[%s] %s | %s", cat, p.Name, id),
+                color = col,
+            }
+        end
+    end
+
+    for i, d in ipairs(AnimDetector.labels) do
+        if entries[i] then
+            d.Text = entries[i].text
+            d.Color = entries[i].color
+            d.Visible = true
+        else
+            d.Visible = false
+        end
+    end
+end
+
+animDetectorCreate()
 
 -- ════════════════════════════════════════════════════════════════
 --  LOOPS
@@ -922,6 +1254,7 @@ task.spawn(function()
 
         local blockAnimPlayer = nil
         local dashAnimPlayer  = nil
+        local skillAnimPlayer = nil
         local currentTime     = tick()
 
         for _, p in ipairs(Players:GetPlayers()) do
@@ -934,14 +1267,18 @@ task.spawn(function()
             if dist <= BLOCK_RANGE and not blockAnimPlayer then
                 if getCurrentAnimFromChar(p.Character, BlockMode) then blockAnimPlayer = p end
             end
+            if dist <= SKILL_RANGE and not skillAnimPlayer then
+                if getCurrentAnimFromChar(p.Character, SkillBlockMode) then skillAnimPlayer = p end
+            end
             if dist <= DASH_RANGE and not dashAnimPlayer then
                 if getCurrentAnimFromChar(p.Character, DashMode) then dashAnimPlayer = p end
             end
-            if blockAnimPlayer and dashAnimPlayer then break end
+            if blockAnimPlayer and dashAnimPlayer and skillAnimPlayer then break end
         end
 
+        -- Awakening Counter
         if _G.AwakeningCounter_Enabled and isUltimateReady() and (headOfHeiEquipped or charlesEquipped) then
-            if blockAnimPlayer or dashAnimPlayer then
+            if blockAnimPlayer or dashAnimPlayer or skillAnimPlayer then
                 keypress(KEY_G); keyrelease(KEY_G)
                 if blockTriggered then keyrelease(KEY_F); blockTriggered = false end
                 if dashTriggered  then keyrelease(KEY_F); dashTriggered  = false end
@@ -949,9 +1286,10 @@ task.spawn(function()
             end
         end
 
+        -- Auto Counter
         if _G.AutoCounter_Enabled then
             local counterAvailable = luckyCowardEquipped or (charlesEquipped and charlesReady)
-            if counterAvailable and (blockAnimPlayer or dashAnimPlayer) then
+            if counterAvailable and (blockAnimPlayer or dashAnimPlayer or skillAnimPlayer) then
                 if luckyCowardEquipped then
                     mouse1click()
                 elseif charlesEquipped and charlesReady and currentTime - lastCharlesTime > CHARLES_COOLDOWN then
@@ -964,6 +1302,7 @@ task.spawn(function()
             end
         end
 
+        -- Auto Block Dash
         if _G.AutoBlockDash_Enabled and dashAnimPlayer then
             if not dashTriggered then
                 dashTriggered = true; dashStart = tick(); keypress(KEY_F)
@@ -974,6 +1313,18 @@ task.spawn(function()
             continue
         end
 
+        -- Auto Skill Block — segura F enquanto a animação durar
+        if _G.AutoSkillBlock_Enabled and skillAnimPlayer then
+            if not dashTriggered then
+                dashTriggered = true; keypress(KEY_F)
+            end
+            continue -- mantém F até skillAnimPlayer sumir
+        end
+        if dashTriggered and not skillAnimPlayer then
+            keyrelease(KEY_F); mouse1click(); dashTriggered = false
+        end
+
+        -- Auto Block
         if _G.AutoBlock_Enabled and blockAnimPlayer then
             if not blockTriggered then
                 blockTriggered = true; blockStart = tick(); keypress(KEY_F)
@@ -1012,10 +1363,11 @@ task.spawn(function()
     end
 end)
 
-task.spawn(function() while running do pcall(UpdateESPPositions)  pcall(UpdateDomainHealthESP) task.wait(1 / math.max(1, CONFIG.esp.updateRate)) end end)
-task.spawn(function() while running do pcall(DiscoverESPObjects)  task.wait(0.5)  end end)
 task.spawn(function() while running do pcall(ProcessRatioQTE)     task.wait(0.016) end end)
 task.spawn(function() while running do pcall(ProcessPerfectSwap)  task.wait(0.01)  end end)
 task.spawn(function() while running do pcall(RunCharaQTE)         task.wait(0.2)   end end)
+task.spawn(function() while running do pcall(UpdateESPPositions) pcall(UpdateDomainHealthESP) task.wait(1/60) end end)
+task.spawn(function() while running do pcall(DiscoverESPObjects) task.wait(0.5) end end)
 task.spawn(function() while running do pcall(ProcessDomainVotes)  task.wait(0.05)  end end)
+task.spawn(function() while running do pcall(animDetectorUpdate)     task.wait(0.05)  end end)
 task.spawn(function() while running do currentPing = GetPing()    task.wait(1)     end end)
