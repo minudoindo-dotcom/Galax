@@ -1,5 +1,5 @@
 -- ════════════════════════════════════════════════════════════════
---  Jujutsu Hub (Somente Animações)
+--  Jujutsu Hub
 --  UI: GalaxLib
 -- ════════════════════════════════════════════════════════════════
 
@@ -62,80 +62,231 @@ local charlesCooldownAddr     = nil
 local charlesLastState        = false
 
 -- ════════════════════════════════════════════════════════════════
---  OFFSETS  (Somente Animação e Interface)
+--  OFFSETS  (version-ae421f0582e54718)
 -- ════════════════════════════════════════════════════════════════
 
+-- GuiObject.Visible  = 1461  (byte)
 local VISIBLE_OFFSET = 1461
+
+-- Sound.SoundId      = 224   (string pointer)
+local SOUNDID_OFFSET = 224
+
+-- Misc.Value         = 208   (float for ValueBase cooldown)
 local VALUE_OFFSET   = 208
 
 local INST = {
-    ClassDescriptor = 24,
-    ClassName       = 8,
-    Name            = 176,
+    ClassDescriptor = 24,  -- Instance.ClassDescriptor
+    ClassName       = 8,   -- ClassDescriptor → ClassName ptr
+    Name            = 176, -- Instance.Name
 }
 
 local ANIM = {
-    ActiveAnimations = 2152,
-    Animation        = 208,
-    AnimationId      = 208,
-    NodeNext         = 16,
+    ActiveAnimations = 2152, -- Animator.ActiveAnimations
+    Animation        = 208,  -- AnimationTrack.Animation
+    AnimationId      = 208,  -- Misc.AnimationId (Animation → id ptr)
+    NodeNext         = 16,   -- linked-list node → next ptr
 }
 
 local HUM = {
-    Health    = 404,
-    MaxHealth = 436,
+    Health    = 404, -- Humanoid.Health
+    MaxHealth = 436, -- Humanoid.MaxHealth
 }
 
 local CAM = {
-    ViewportSize = 744,
+    ViewportSize = 744, -- Camera.ViewportSize (Vector2 as two floats)
+}
+
+local GUI = {
+    AbsolutePosition = 272, -- GuiBase2D.AbsolutePosition
+    AbsoluteSize     = 280, -- GuiBase2D.AbsoluteSize
 }
 
 -- ════════════════════════════════════════════════════════════════
---  ANIMATION ID TABLES (Atualizado para Melee1 apenas no Block)
+--  ANIMATION ID TABLES
 -- ════════════════════════════════════════════════════════════════
 
 local BlockMode = {
-    ["127851700400958"] = true, ["95295463826732"]  = true, ["110146909061402"] = true, 
-    ["96185406489877"]  = true, ["94588892125071"]  = true, ["75337033003776"]  = true, 
-    ["109718372214725"] = true, ["126277739156443"] = true, ["71784337627181"]  = true, 
-    ["98365018553171"]  = true, ["79568627671998"]  = true, ["96327114254575"]  = true, 
-    ["85068785050521"]  = true, ["133936641185614"] = true, ["139280948741186"] = true, 
-    ["106474043944206"] = true, ["104087365067491"] = true, ["123236749567737"] = true, 
-    ["133240987753043"] = true, ["125689391910002"] = true, ["98783064085844"]  = true, 
-    ["80504019426174"]  = true, ["101283990868172"] = true, ["77284264481284"]  = true, 
-    ["84359513001979"]  = true, ["114913455544468"] = true, ["133447840605824"] = true, 
-    ["114985590391235"] = true, ["111083699259354"] = true, ["75425383606016"]  = true, 
-    ["115220151812065"] = true,
+    ["100040983719699"]=true,["100474683542881"]=true,["100835844904897"]=true,
+    ["100919783371339"]=true,["101107501526373"]=true,["101283990868172"]=true,
+    ["101681158700275"]=true,["101862938993177"]=true,["102085681670810"]=true,
+    ["102285403332509"]=true,["104087365067491"]=true,["104137631480391"]=true,
+    ["104148378077935"]=true,["105077924973072"]=true,["105287938257399"]=true,
+    ["105376952884290"]=true,["105870773841535"]=true,["105878146832347"]=true,
+    ["106282708121342"]=true,["106474043944206"]=true,["107029561762376"]=true,
+    ["107825127494342"]=true,["108027796023968"]=true,["108376755316792"]=true,
+    ["108449614447004"]=true,["108636011034323"]=true,["108686045412945"]=true,
+    ["108708446862011"]=true,["109299799610861"]=true,["109340494549365"]=true,
+    ["109598602517674"]=true,["109718372214725"]=true,["110146909061402"]=true,
+    ["110978068388232"]=true,["111083699259354"]=true,["111750364977569"]=true,
+    ["112976111828157"]=true,["113963875117859"]=true,["114375152692460"]=true,
+    ["114562626498918"]=true,["114648729358082"]=true,["114797198964940"]=true,
+    ["114913455544468"]=true,["114985590391235"]=true,["115220151812065"]=true,
+    ["115446267797335"]=true,["115586282387431"]=true,["116910683335467"]=true,
+    ["117638619792450"]=true,["117831239064143"]=true,["118634493886688"]=true,
+    ["119042572747325"]=true,["119152716475706"]=true,["119434039452526"]=true,
+    ["120951759618134"]=true,["121322029260156"]=true,["121800365664070"]=true,
+    ["122074769949629"]=true,["122170399962557"]=true,["122573730331631"]=true,
+    ["122655618588472"]=true,["123236749567737"]=true,["123414935051274"]=true,
+    ["124777463468279"]=true,["124862357369335"]=true,["125120382787311"]=true,
+    ["125689391910002"]=true,["126277739156443"]=true,["127851700400958"]=true,
+    ["128267680345523"]=true,["129392532939530"]=true,["130013701390383"]=true,
+    ["130135202362252"]=true,["130284226842903"]=true,["130659585624615"]=true,
+    ["130806585141471"]=true,["131279921755936"]=true,["131967150738931"]=true,
+    ["132855702748568"]=true,["133240987753043"]=true,["133447840605824"]=true,
+    ["133936641185614"]=true,["134243365075812"]=true,["134461702265323"]=true,
+    ["134917827147266"]=true,["136978371933277"]=true,["138169151223960"]=true,
+    ["138489871864252"]=true,["138626478088332"]=true,["138826758216894"]=true,
+    ["139280948741186"]=true,["139833047658617"]=true,["139899183181812"]=true,
+    ["140487289646129"]=true,["140588454098230"]=true,["140597320237985"]=true,
+    ["71784337627181"]=true,["72211631197834"]=true,["72548435296350"]=true,
+    ["73456086297777"]=true,["74550814125588"]=true,["74580112757879"]=true,
+    ["75337033003776"]=true,["75425383606016"]=true,["75961842881209"]=true,
+    ["77284264481284"]=true,["77583711129628"]=true,["78540777177847"]=true,
+    ["79037514387169"]=true,["79086910454958"]=true,["79271374075726"]=true,
+    ["79436586236026"]=true,["79568627671998"]=true,["79718433989469"]=true,
+    ["80150988150906"]=true,["80504019426174"]=true,["81630213087988"]=true,
+    ["81708642912019"]=true,["81786875517933"]=true,["82400997593751"]=true,
+    ["83843118463884"]=true,["84080901810314"]=true,["84359513001979"]=true,
+    ["84442064935420"]=true,["84547415708554"]=true,["84602523265622"]=true,
+    ["84989753395518"]=true,["85068785050521"]=true,["85148168523745"]=true,
+    ["85887300265206"]=true,["86109053396974"]=true,["86626502434817"]=true,
+    ["86918383671100"]=true,["87792276744794"]=true,["88849926869776"]=true,
+    ["89394375446962"]=true,["89537672683114"]=true,["90981055255583"]=true,
+    ["91853462087608"]=true,["91990544700842"]=true,["92424708306981"]=true,
+    ["92966188946988"]=true,["94588892125071"]=true,["94781366396051"]=true,
+    ["95002584969527"]=true,["95295463826732"]=true,["96185406489877"]=true,
+    ["96327114254575"]=true,["96433049733325"]=true,["96513213736303"]=true,
+    ["97207871642820"]=true,["97215638330770"]=true,["97504088532041"]=true,
+    ["97868312130612"]=true,["98365018553171"]=true,["98577624776161"]=true,
+    ["98783064085844"]=true,["98845475810982"]=true,["99205259396653"]=true,
+    ["99451940496871"]=true,["99710481887795"]=true,
 }
 
 local DashMode = {
     ["102567076867813"]=true,["102698645310820"]=true,["134451575263988"]=true,
     ["70593304937741"]=true,["103513893010999"]=true,["140381676724931"]=true,
-    ["111214152450580"]=true,["85003123457049"]=true,["136807071694451"]=true,
-    ["99026585086806"]=true,["97396408415659"]=true,["97803359940506"]=true,
-    ["127453446770583"]=true,["115543520504167"]=true,["110978068388232"]=true,
-    ["130284226842903"]=true,["132855702748568"]=true,["134917827147266"]=true,
-    ["140597320237985"]=true,["81708642912019"]=true,["99451940496871"]=true,
-    ["130135202362252"]=true,["104148378077935"]=true,["124777463468279"]=true,
-    ["86626502434817"]=true,["128267680345523"]=true,["129392532939530"]=true,
-    ["120951759618134"]=true,["138169151223960"]=true,
+    ["111214152450580"]=true,["85003123457049"]=true,
+    ["136807071694451"]=true,["99026585086806"]=true,["97396408415659"]=true,
+    ["97803359940506"]=true,["127453446770583"]=true,
+    ["115543520504167"]=true,
+    ["110978068388232"]=true,["130284226842903"]=true,["132855702748568"]=true,
+    ["134917827147266"]=true,["140597320237985"]=true,["81708642912019"]=true,
+    ["99451940496871"]=true,["130135202362252"]=true,["104148378077935"]=true,
+    ["124777463468279"]=true,["86626502434817"]=true,["128267680345523"]=true,
+    ["129392532939530"]=true,["120951759618134"]=true,["138169151223960"]=true,
 }
 
 local SkillBlockMode = {
-    ["137865634124104"]=true,["137654778575373"]=true,["77200218033775"]=true,
-    ["124901309160375"]=true,["82541714192027"]=true,["72063002791216"]=true,
-    ["72467492674240"]=true,["108123475959041"]=true,["132653290201368"]=true,
-    ["116432619539029"]=true,["89092734635186"]=true,["72475960800126"]=true,
-    ["127171275866632"]=true,["100446064103831"]=true,["84039122607068"]=true,
-    ["94720627091769"]=true,["111720035828971"]=true,["89652378115594"]=true,
-    ["133869529005453"]=true,["135411487367370"]=true,["104824728032437"]=true,
-    ["89582140026963"]=true,["88911658010897"]=true,["120136894011461"]=true,
-    ["93901924492394"]=true,["105121164520635"]=true,["86045680364061"]=true,
-    ["81210313723714"]=true,["130957217409359"]=true,["100811576955331"]=true,
-    ["113359849246757"]=true,["139479927693015"]=true,["129678103897608"]=true,
-    ["121550561336691"]=true,["115097960689033"]=true,["94347210073500"]=true,
-    ["103013818601982"]=true,["79860101129549"]=true,["102053631728986"]=true,
-    ["76957377224584"]=true,
+    ["137865634124104"]=true,["137654778575373"]=true,
+    ["77200218033775"]=true,["124901309160375"]=true,
+    ["82541714192027"]=true,["72063002791216"]=true,
+    ["72467492674240"]=true,["108123475959041"]=true,
+    ["132653290201368"]=true,["116432619539029"]=true,
+    ["89092734635186"]=true,["72475960800126"]=true,
+    ["127171275866632"]=true,["100446064103831"]=true,
+    ["84039122607068"]=true,["94720627091769"]=true,
+    ["111720035828971"]=true,["89652378115594"]=true,
+    ["133869529005453"]=true,["135411487367370"]=true,
+    ["104824728032437"]=true,["89582140026963"]=true,
+    ["88911658010897"]=true,["120136894011461"]=true,
+    ["93901924492394"]=true,["105121164520635"]=true,
+    ["86045680364061"]=true,["81210313723714"]=true,
+    ["130957217409359"]=true,["100811576955331"]=true,
+    ["113359849246757"]=true,["139479927693015"]=true,
+    ["129678103897608"]=true,["121550561336691"]=true,
+    ["115097960689033"]=true,["94347210073500"]=true,
+    ["103013818601982"]=true,["79860101129549"]=true,
+    ["102053631728986"]=true,["76957377224584"]=true,
+}
+
+local SkillMode = {
+    ["100446064103831"]=true,["100532748201417"]=true,["100811576955331"]=true,["101162958113766"]=true,["101617544363219"]=true,
+    ["101956908324027"]=true,["102053631728986"]=true,["102221764735089"]=true,["102764091199885"]=true,["103194057617238"]=true,
+    ["103493656287292"]=true,["103960582499076"]=true,["104749346956269"]=true,["104793932628579"]=true,["104824728032437"]=true,
+    ["105068005007692"]=true,["105121164520635"]=true,["105826208784475"]=true,["106649604455931"]=true,["107067953428369"]=true,
+    ["107554693613496"]=true,["108123475959041"]=true,["108319980293313"]=true,["108374320117834"]=true,["108695775669287"]=true,
+    ["108865650924154"]=true,["110906451704074"]=true,["111077341852080"]=true,["111593784328268"]=true,["111720035828971"]=true,
+    ["111952952886712"]=true,["112577421904593"]=true,["113722638806911"]=true,["114277419400774"]=true,["114321791577837"]=true,
+    ["115097960689033"]=true,["115561023870463"]=true,["115589615022077"]=true,["115683433001643"]=true,["116432619539029"]=true,
+    ["116811846715462"]=true,["117178057848472"]=true,["117318845383884"]=true,["117371289990421"]=true,["118076716434659"]=true,
+    ["118326207788271"]=true,["118607369830566"]=true,["120136894011461"]=true,["120319825505172"]=true,["120480195428173"]=true,
+    ["120914276661831"]=true,["121343824534765"]=true,["121923107958102"]=true,["121984128639453"]=true,["122607727974119"]=true,
+    ["123167492985370"]=true,["124243904748268"]=true,["124340599144108"]=true,["124759375124281"]=true,["124901309160375"]=true,
+    ["127171275866632"]=true,["127727754867974"]=true,["127843796051633"]=true,["128537969081721"]=true,["128779949980528"]=true,
+    ["129132347098646"]=true,["130957217409359"]=true,["131219281339199"]=true,["131506102901134"]=true,["131826588098422"]=true,
+    ["131948591638044"]=true,["132281807148575"]=true,["132653290201368"]=true,["132704398648016"]=true,["132725601768618"]=true,
+    ["132748613906344"]=true,["132754851925571"]=true,["132928484483887"]=true,["134777193523837"]=true,["135411487367370"]=true,
+    ["135894053646223"]=true,["136161556678024"]=true,["137007125977081"]=true,["137451357351000"]=true,["137611726964398"]=true,
+    ["137638103122538"]=true,["137654778575373"]=true,["137865634124104"]=true,["139956651661073"]=true,["70840150456007"]=true,
+    ["70890372338556"]=true,["72063002791216"]=true,["72157009600725"]=true,["72343192576784"]=true,["72424828296871"]=true,
+    ["72467492674240"]=true,["72475960800126"]=true,["72932825817330"]=true,["72933571933445"]=true,["73048386765082"]=true,
+    ["73482562876920"]=true,["75390215999547"]=true,["75736902190737"]=true,["76313364850487"]=true,["76519264603956"]=true,
+    ["76957377224584"]=true,["77200218033775"]=true,["77323960817460"]=true,["77833820443705"]=true,["78453184359132"]=true,
+    ["78578012001859"]=true,["79717812541463"]=true,["79860101129549"]=true,["80465501985014"]=true,["80922461169812"]=true,
+    ["81112033595734"]=true,["81210313723714"]=true,["81953935260783"]=true,["81971779090581"]=true,["82149987460883"]=true,
+    ["82541714192027"]=true,["82987093810211"]=true,["84039122607068"]=true,["84716311536982"]=true,["85024950165903"]=true,
+    ["85569553424083"]=true,["86045680364061"]=true,["86073608599582"]=true,["86362077638309"]=true,["86618245908620"]=true,
+    ["87472283043607"]=true,["87481059409847"]=true,["88005970155216"]=true,["88215274584883"]=true,["88911658010897"]=true,
+    ["89092734635186"]=true,["89582140026963"]=true,["89652378115594"]=true,["89677028738408"]=true,["89888040037257"]=true,
+    ["90781290293652"]=true,["91984445049000"]=true,["92081142332466"]=true,["92529934565092"]=true,["92595499555055"]=true,
+    ["93796567192197"]=true,["94223344057046"]=true,["94347210073500"]=true,["94590184881876"]=true,["94616006376147"]=true,
+    ["94720627091769"]=true,["95097480425566"]=true,["95421145178968"]=true,["95494223368246"]=true,["95901746347992"]=true,
+    ["96047028540271"]=true,["96397814657727"]=true,["96466374346823"]=true,
+}
+
+-- ════════════════════════════════════════════════════════════════
+--  SOUND ID TABLES
+-- ════════════════════════════════════════════════════════════════
+
+local NormalHitSounds = {
+    ["8595975878"]=true,["8595975458"]=true,["8595974357"]=true,
+    ["4571259077"]=true,["3932145123"]=true,["3932145654"]=true,["3848125583"]=true,
+}
+
+local SpecialHitSounds = {
+    ["89850070587619"]=true,["139739650563219"]=true,["114146716369211"]=true,["89079427123853"]=true,
+    ["91344226850535"]=true,["91019449442779"]=true,["139826126503063"]=true,["135674501661535"]=true,
+    ["94107281648467"]=true,["103563218704266"]=true,
+    ["73369470591089"]=true,["129306040953825"]=true,["133798286166675"]=true,
+    ["133341853236210"]=true,["125024159587132"]=true,["136328533963688"]=true,["139804351541539"]=true,
+    ["88685272276380"]=true,["83770717073727"]=true,["74317472561001"]=true,
+    ["130079449462583"]=true,["102360793155474"]=true,["89651789530111"]=true,["100238850813671"]=true,
+}
+
+local DashSounds = {
+    ["3929467229"]=true,["4909206080"]=true,["114900496731174"]=true,
+    ["83048216359043"]=true,["1295446488"]=true,["1295456280"]=true,
+    ["17046281380"]=true,["17101065425"]=true,["17169364965"]=true,
+    ["3755636152"]=true,["115254148621223"]=true,["140170031367282"]=true,
+    ["92456342640262"]=true,["115290636129284"]=true,
+}
+
+local SkillBlockSounds = {
+    ["102930929366058"]=true,["103563218704266"]=true,["104749346956269"]=true,
+    ["104824728032437"]=true,["104974135649084"]=true,["105213688680216"]=true,
+    ["109864853124500"]=true,["111720035828971"]=true,["111770082377892"]=true,
+    ["112016169570826"]=true,["112176479612273"]=true,["113403339442588"]=true,
+    ["115026144285429"]=true,["116070235847840"]=true,["116622642632294"]=true,
+    ["117954571666770"]=true,["121354995604661"]=true,["124532419231032"]=true,
+    ["125025280611426"]=true,["125037643044310"]=true,["130667216707870"]=true,
+    ["132547948177910"]=true,["132548164020742"]=true,["132826787704625"]=true,
+    ["132856141242580"]=true,["135411487367370"]=true,["135423939868890"]=true,
+    ["140443001346012"]=true,["154787303"]=true,["16773286330"]=true,
+    ["16773286492"]=true,["17046281074"]=true,["17046282624"]=true,
+    ["17046505673"]=true,["17101065020"]=true,["17101065238"]=true,
+    ["17169364647"]=true,["17169365111"]=true,["17169365331"]=true,
+    ["17206057404"]=true,["17269355114"]=true,["17392238265"]=true,
+    ["17392240969"]=true,["18259558246"]=true,["3742310026"]=true,
+    ["3755636152"]=true,["3755636638"]=true,["3932141920"]=true,
+    ["411286671"]=true,["4459570664"]=true,["6881026094"]=true,
+    ["72700191895039"]=true,["72894267845813"]=true,["7307838125"]=true,
+    ["7512928742"]=true,["76957377224584"]=true,["77439795464226"]=true,
+    ["78400218029025"]=true,["79490575410915"]=true,["83883449987100"]=true,
+    ["84039122607068"]=true,["84086575329798"]=true,["84674642106437"]=true,
+    ["858508159"]=true,["89652378115594"]=true,["9066732918"]=true,
+    ["9114427348"]=true,["9116684884"]=true,["9118614717"]=true,
+    ["92772409642805"]=true,["94107281648467"]=true,["94132201322663"]=true,
+    ["94720627091769"]=true,["97479273744599"]=true,
 }
 
 -- ════════════════════════════════════════════════════════════════
@@ -227,7 +378,7 @@ local function isLocalPlayer(p)
 end
 
 -- ════════════════════════════════════════════════════════════════
---  MEMORY HELPERS (ANIMATION ONLY)
+--  MEMORY HELPERS
 -- ════════════════════════════════════════════════════════════════
 
 local function readStr(addr)
@@ -289,6 +440,60 @@ local function getCurrentAnimFromChar(char, mode)
         curr = readPtr(curr)
     end
     return nil
+end
+
+-- ════════════════════════════════════════════════════════════════
+--  SOUND READING
+--  Sound.SoundId at offset 224 → string pointer → readStr
+-- ════════════════════════════════════════════════════════════════
+
+local function readSoundIdFromAddr(addr)
+    if not addr or addr <= 4096 then return nil end
+    local strPtr = readPtr(addr + SOUNDID_OFFSET)
+    if not strPtr then return nil end
+    local s = readStr(strPtr)
+    if not s then return nil end
+    return s:match("%d+")
+end
+
+local function getActiveSoundsFromChar(char)
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    if not hrp then return {} end
+    local sounds = {}
+    for _, obj in ipairs(hrp:GetChildren()) do
+        if obj.ClassName == "Sound" then
+            local addr = tonumber(obj.Address)
+            if addr and addr > 4096 then
+                local id = readSoundIdFromAddr(addr)
+                if id then sounds[id] = true end
+            end
+        end
+    end
+    return sounds
+end
+
+local function checkSoundBlock(char)
+    local sounds = getActiveSoundsFromChar(char)
+    for id in pairs(sounds) do
+        if NormalHitSounds[id] or SpecialHitSounds[id] then return true end
+    end
+    return false
+end
+
+local function checkSoundDash(char)
+    local sounds = getActiveSoundsFromChar(char)
+    for id in pairs(sounds) do
+        if DashSounds[id] then return true end
+    end
+    return false
+end
+
+local function checkSoundSkill(char)
+    local sounds = getActiveSoundsFromChar(char)
+    for id in pairs(sounds) do
+        if SkillBlockSounds[id] then return true end
+    end
+    return false
 end
 
 -- ════════════════════════════════════════════════════════════════
@@ -606,6 +811,7 @@ local function UpdateDomainHealthESP()
     local playerPos     = GetPlayerPosition()
     local nearbyThresh  = CONFIG.domainHealthESP.nearbyThreshold
 
+    -- Read viewport via Camera.ViewportSize (offset 744, two sequential floats)
     local screenCenterX = 960
     local cam = workspace.CurrentCamera
     if cam then
@@ -826,6 +1032,7 @@ local function isUltimateReady()
     if not readyFrame then return false end
     local addr = tonumber(readyFrame.Address)
     if not addr or addr <= 4096 then return false end
+    -- GuiObject.Visible is a byte at offset 1461 (dump)
     local ok, byte = pcall(memory_read, "byte", addr + VISIBLE_OFFSET)
     return ok and byte ~= 0
 end
@@ -886,8 +1093,9 @@ local function monitorCharlesCooldown()
     charlesCooldownAddr = tonumber(cooldown.Address)
     if not charlesCooldownAddr or charlesCooldownAddr <= 4096 then return true end
 
+    -- ValueBase.Value (float) at offset 208 (Misc.Value from dump)
     local ok, secondsLeft = pcall(memory_read, "float", charlesCooldownAddr + VALUE_OFFSET)
-    if not ok or secondsLeft ~= secondsLeft then return true end
+    if not ok or secondsLeft ~= secondsLeft then return true end  -- NaN guard
 
     local isOnCD = secondsLeft > 0.1
     if isOnCD ~= charlesLastState then
@@ -981,6 +1189,7 @@ local dashTriggered  = false
 local skillTriggered = false
 local blockStart     = 0
 local dashStart      = 0
+local skillStart     = 0
 
 task.spawn(function()
     while true do
@@ -1017,6 +1226,7 @@ task.spawn(function()
             if not theirRoot then continue end
             local dist = getMagnitude(theirRoot.Position, myRoot.Position)
 
+            -- Block range
             if dist <= BLOCK_RANGE then
                 local id = getCurrentAnimFromChar(p.Character, BlockMode)
                 if id then
@@ -1025,6 +1235,7 @@ task.spawn(function()
                 end
             end
 
+            -- Dash range
             if dist <= DASH_RANGE then
                 local id = getCurrentAnimFromChar(p.Character, DashMode)
                 if id then
@@ -1033,6 +1244,7 @@ task.spawn(function()
                 end
             end
 
+            -- Skill range
             if dist <= SKILL_RANGE then
                 local id = getCurrentAnimFromChar(p.Character, SkillBlockMode)
                 if id then
@@ -1042,6 +1254,7 @@ task.spawn(function()
             end
         end
 
+        -- ── AUTO COUNTER (highest priority) ──────────────────────
         if _G.AutoCounter_Enabled and anyAnimPlayer and anyAnimId then
             if luckyCowardEquipped then
                 mouse1click()
@@ -1058,20 +1271,22 @@ task.spawn(function()
             end
         end
 
-        -- Auto Skill Block: segura F enquanto a animação durar, solta + M1 quando acabar
+        -- ── AUTO SKILL BLOCK ─────────────────────────────────────
         if _G.AutoSkillBlock_Enabled and skillAnimPlayer and skillAnimId then
             if not skillTriggered then
                 skillTriggered = true
+                skillStart     = tick()
                 keypress(KEY_F)
+            end
+            if skillTriggered and tick() - skillStart >= BLOCK_HOLD_TIME then
+                keyrelease(KEY_F)
+                mouse1click()
+                skillTriggered = false
             end
             continue
         end
-        if skillTriggered then
-            keyrelease(KEY_F)
-            mouse1click()
-            skillTriggered = false
-        end
 
+        -- ── AUTO BLOCK DASH ──────────────────────────────────────
         if _G.AutoBlockDash_Enabled and dashAnimPlayer and dashAnimId then
             if not dashTriggered then
                 dashTriggered = true
@@ -1086,6 +1301,7 @@ task.spawn(function()
             continue
         end
 
+        -- ── AUTO BLOCK ───────────────────────────────────────────
         if _G.AutoBlock_Enabled and blockAnimPlayer and blockAnimId then
             if not blockTriggered then
                 blockTriggered = true
@@ -1100,8 +1316,10 @@ task.spawn(function()
             continue
         end
 
+        -- Release if nothing detected
         if blockTriggered then keyrelease(KEY_F); blockTriggered = false end
         if dashTriggered  then keyrelease(KEY_F); dashTriggered  = false end
+        if skillTriggered then keyrelease(KEY_F); skillTriggered = false end
     end
 end)
 
@@ -1150,6 +1368,7 @@ end)
 --  BACKGROUND LOOPS
 -- ════════════════════════════════════════════════════════════════
 
+-- Periodic ability check
 task.spawn(function()
     while true do
         if _G.AutoCounter_Enabled or _G.AwakeningCounter_Enabled then
@@ -1159,6 +1378,7 @@ task.spawn(function()
     end
 end)
 
+-- Auto QTE
 spawn(function()
     while running do
         if CONFIG.autoQTE.enabled and not iskeypressed(KEYS.F) then
@@ -1177,6 +1397,7 @@ spawn(function()
     end
 end)
 
+-- ESP position update
 spawn(function()
     while running do
         pcall(UpdateESPPositions)
@@ -1185,26 +1406,32 @@ spawn(function()
     end
 end)
 
+-- ESP discovery
 spawn(function()
     while running do pcall(DiscoverESPObjects) task.wait(0.5) end
 end)
 
+-- Ratio QTE
 spawn(function()
     while running do pcall(ProcessRatioQTE) task.wait(0.016) end
 end)
 
+-- Perfect Swap
 spawn(function()
     while running do pcall(ProcessPerfectSwap) task.wait(0.01) end
 end)
 
+-- Chara QTE
 spawn(function()
     while running do pcall(RunCharaQTE) task.wait(0.2) end
 end)
 
+-- Domain Votes
 spawn(function()
     while running do pcall(ProcessDomainVotes) task.wait(0.05) end
 end)
 
+-- Ping tracker
 spawn(function()
     while running do currentPing = GetPing() task.wait(1) end
 end)
