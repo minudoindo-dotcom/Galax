@@ -32,7 +32,7 @@ GalaxHubWhitelist = {
     "thehonoredih",
     "CompetitiveOrDeath",
     "April136180",
-    "24x_D1E",
+    "gewoonjip013",
     "luvnotht",
     "ImLegitCuhAlt",
     "test",
