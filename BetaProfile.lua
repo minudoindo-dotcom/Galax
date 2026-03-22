@@ -34,7 +34,7 @@ GalaxHubWhitelist = {
     "April136180",
     "24x_D1E",
     "luvnotht",
-    "test",
+    "ImLegitCuhAlt",
     "test",
 
     -- Add more users below this line!
