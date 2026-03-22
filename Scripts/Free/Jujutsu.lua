@@ -1,8 +1,3 @@
--- ════════════════════════════════════════════════════════════════
---  Jujutsu Hub (Somente Animações)
---  UI: GalaxLib
--- ════════════════════════════════════════════════════════════════
-
 loadstring(game:HttpGet("https://raw.githubusercontent.com/minudoindo-dotcom/Galax/refs/heads/main/Lib/Beta/Galax.lua"))()
 
 local Win = GalaxLib:CreateWindow({
@@ -46,26 +41,14 @@ local DomainState   = { isActive = false, trackedDomain = nil, gWasPressed = fal
                         confessDrawing = nil, silenceDrawing = nil, denialDrawing = nil }
 local DomainHealthESPState = { drawings = {} }
 
-local currentPing   = 0
-local running       = true
-
-local lastAwakeningNotif      = 0
-local notifCooldown           = 3
-local charlesEquippedNotified = false
-local headOfHeiEquippedNotified = false
-local luckyCowardEquippedNotified = false
-local charlesOnCooldown       = false
-local headOfHeiEquipped       = false
-local charlesEquipped         = false
-local luckyCowardEquipped     = false
-local charlesCooldownAddr     = nil
-local charlesLastState        = false
+local currentPing = 0
+local running     = true
 
 -- ════════════════════════════════════════════════════════════════
---  OFFSETS  (Somente Animação e Interface)
+--  OFFSETS (version-ae421f0582e54718)
 -- ════════════════════════════════════════════════════════════════
 
-local VISIBLE_OFFSET = 1461
+local SOUNDID_OFFSET = 224
 local VALUE_OFFSET   = 208
 
 local INST = {
@@ -91,51 +74,78 @@ local CAM = {
 }
 
 -- ════════════════════════════════════════════════════════════════
---  ANIMATION ID TABLES (Atualizado para Melee1 apenas no Block)
+--  ANIMATION ID TABLES
 -- ════════════════════════════════════════════════════════════════
 
 local BlockMode = {
-    ["127851700400958"] = true, ["95295463826732"]  = true, ["110146909061402"] = true, 
-    ["96185406489877"]  = true, ["94588892125071"]  = true, ["75337033003776"]  = true, 
-    ["109718372214725"] = true, ["126277739156443"] = true, ["71784337627181"]  = true, 
-    ["98365018553171"]  = true, ["79568627671998"]  = true, ["96327114254575"]  = true, 
-    ["85068785050521"]  = true, ["133936641185614"] = true, ["139280948741186"] = true, 
-    ["106474043944206"] = true, ["104087365067491"] = true, ["123236749567737"] = true, 
-    ["133240987753043"] = true, ["125689391910002"] = true, ["98783064085844"]  = true, 
-    ["80504019426174"]  = true, ["101283990868172"] = true, ["77284264481284"]  = true, 
-    ["84359513001979"]  = true, ["114913455544468"] = true, ["133447840605824"] = true, 
-    ["114985590391235"] = true, ["111083699259354"] = true, ["75425383606016"]  = true, 
-    ["115220151812065"] = true,
+    ["100040983719699"]=true,["100474683542881"]=true,["100835844904897"]=true,
+    ["100919783371339"]=true,["101107501526373"]=true,["101283990868172"]=true,
+    ["101681158700275"]=true,["101862938993177"]=true,["102085681670810"]=true,
+    ["102285403332509"]=true,["104087365067491"]=true,["104137631480391"]=true,
+    ["104148378077935"]=true,["105077924973072"]=true,["105287938257399"]=true,
+    ["105376952884290"]=true,["105870773841535"]=true,["105878146832347"]=true,
+    ["106282708121342"]=true,["106474043944206"]=true,["107029561762376"]=true,
+    ["107825127494342"]=true,["108027796023968"]=true,["108376755316792"]=true,
+    ["108449614447004"]=true,["108636011034323"]=true,["108686045412945"]=true,
+    ["108708446862011"]=true,["109299799610861"]=true,["109340494549365"]=true,
+    ["109598602517674"]=true,["109718372214725"]=true,["110146909061402"]=true,
+    ["110978068388232"]=true,["111083699259354"]=true,["111750364977569"]=true,
+    ["112976111828157"]=true,["113963875117859"]=true,["114375152692460"]=true,
+    ["114562626498918"]=true,["114648729358082"]=true,["114797198964940"]=true,
+    ["114913455544468"]=true,["114985590391235"]=true,["115220151812065"]=true,
+    ["115446267797335"]=true,["115586282387431"]=true,["116910683335467"]=true,
+    ["117638619792450"]=true,["117831239064143"]=true,["118634493886688"]=true,
+    ["119042572747325"]=true,["119152716475706"]=true,["119434039452526"]=true,
+    ["120951759618134"]=true,["121322029260156"]=true,["121800365664070"]=true,
+    ["122074769949629"]=true,["122170399962557"]=true,["122573730331631"]=true,
+    ["122655618588472"]=true,["123236749567737"]=true,["123414935051274"]=true,
+    ["124777463468279"]=true,["124862357369335"]=true,["125120382787311"]=true,
+    ["125689391910002"]=true,["126277739156443"]=true,["127851700400958"]=true,
+    ["128267680345523"]=true,["129392532939530"]=true,["130013701390383"]=true,
+    ["130135202362252"]=true,["130284226842903"]=true,["130659585624615"]=true,
+    ["130806585141471"]=true,["131279921755936"]=true,["131967150738931"]=true,
+    ["132855702748568"]=true,["133240987753043"]=true,["133447840605824"]=true,
+    ["133936641185614"]=true,["134243365075812"]=true,["134461702265323"]=true,
+    ["134917827147266"]=true,["136978371933277"]=true,["138169151223960"]=true,
+    ["138489871864252"]=true,["138626478088332"]=true,["138826758216894"]=true,
+    ["139280948741186"]=true,["139833047658617"]=true,["139899183181812"]=true,
+    ["140487289646129"]=true,["140588454098230"]=true,["140597320237985"]=true,
+    ["71784337627181"]=true,["72211631197834"]=true,["72548435296350"]=true,
+    ["73456086297777"]=true,["74550814125588"]=true,["74580112757879"]=true,
+    ["75337033003776"]=true,["75425383606016"]=true,["75961842881209"]=true,
+    ["77284264481284"]=true,["77583711129628"]=true,["78540777177847"]=true,
+    ["79037514387169"]=true,["79086910454958"]=true,["79271374075726"]=true,
+    ["79436586236026"]=true,["79568627671998"]=true,["79718433989469"]=true,
+    ["80150988150906"]=true,["80504019426174"]=true,["81630213087988"]=true,
+    ["81708642912019"]=true,["81786875517933"]=true,["82400997593751"]=true,
+    ["83843118463884"]=true,["84080901810314"]=true,["84359513001979"]=true,
+    ["84442064935420"]=true,["84547415708554"]=true,["84602523265622"]=true,
+    ["84989753395518"]=true,["85068785050521"]=true,["85148168523745"]=true,
+    ["85887300265206"]=true,["86109053396974"]=true,["86626502434817"]=true,
+    ["86918383671100"]=true,["87792276744794"]=true,["88849926869776"]=true,
+    ["89394375446962"]=true,["89537672683114"]=true,["90981055255583"]=true,
+    ["91853462087608"]=true,["91990544700842"]=true,["92424708306981"]=true,
+    ["92966188946988"]=true,["94588892125071"]=true,["94781366396051"]=true,
+    ["95002584969527"]=true,["95295463826732"]=true,["96185406489877"]=true,
+    ["96327114254575"]=true,["96433049733325"]=true,["96513213736303"]=true,
+    ["97207871642820"]=true,["97215638330770"]=true,["97504088532041"]=true,
+    ["97868312130612"]=true,["98365018553171"]=true,["98577624776161"]=true,
+    ["98783064085844"]=true,["98845475810982"]=true,["99205259396653"]=true,
+    ["99451940496871"]=true,["99710481887795"]=true,
 }
 
 local DashMode = {
     ["102567076867813"]=true,["102698645310820"]=true,["134451575263988"]=true,
     ["70593304937741"]=true,["103513893010999"]=true,["140381676724931"]=true,
-    ["111214152450580"]=true,["85003123457049"]=true,["136807071694451"]=true,
-    ["99026585086806"]=true,["97396408415659"]=true,["97803359940506"]=true,
-    ["127453446770583"]=true,["115543520504167"]=true,["110978068388232"]=true,
-    ["130284226842903"]=true,["132855702748568"]=true,["134917827147266"]=true,
-    ["140597320237985"]=true,["81708642912019"]=true,["99451940496871"]=true,
-    ["130135202362252"]=true,["104148378077935"]=true,["124777463468279"]=true,
-    ["86626502434817"]=true,["128267680345523"]=true,["129392532939530"]=true,
-    ["120951759618134"]=true,["138169151223960"]=true,
-}
-
-local SkillBlockMode = {
-    ["137865634124104"]=true,["137654778575373"]=true,["77200218033775"]=true,
-    ["124901309160375"]=true,["82541714192027"]=true,["72063002791216"]=true,
-    ["72467492674240"]=true,["108123475959041"]=true,["132653290201368"]=true,
-    ["116432619539029"]=true,["89092734635186"]=true,["72475960800126"]=true,
-    ["127171275866632"]=true,["100446064103831"]=true,["84039122607068"]=true,
-    ["94720627091769"]=true,["111720035828971"]=true,["89652378115594"]=true,
-    ["133869529005453"]=true,["135411487367370"]=true,["104824728032437"]=true,
-    ["89582140026963"]=true,["88911658010897"]=true,["120136894011461"]=true,
-    ["93901924492394"]=true,["105121164520635"]=true,["86045680364061"]=true,
-    ["81210313723714"]=true,["130957217409359"]=true,["100811576955331"]=true,
-    ["113359849246757"]=true,["139479927693015"]=true,["129678103897608"]=true,
-    ["121550561336691"]=true,["115097960689033"]=true,["94347210073500"]=true,
-    ["103013818601982"]=true,["79860101129549"]=true,["102053631728986"]=true,
-    ["76957377224584"]=true,
+    ["111214152450580"]=true,["85003123457049"]=true,
+    ["136807071694451"]=true,["99026585086806"]=true,["97396408415659"]=true,
+    ["97803359940506"]=true,["127453446770583"]=true,
+    ["115543520504167"]=true,
+    ["110978068388232"]=true,["130284226842903"]=true,["132855702748568"]=true,
+    ["134917827147266"]=true,["140597320237985"]=true,["81708642912019"]=true,
+    ["99451940496871"]=true,["130135202362252"]=true,["104148378077935"]=true,
+    ["124777463468279"]=true,["86626502434817"]=true,["128267680345523"]=true,
+    ["129392532939530"]=true,["120951759618134"]=true,["138169151223960"]=true,
 }
 
 -- ════════════════════════════════════════════════════════════════
@@ -143,18 +153,12 @@ local SkillBlockMode = {
 -- ════════════════════════════════════════════════════════════════
 
 local KEY_F           = 0x46
-local KEY_3           = 0x33
-local KEY_G           = 0x47
 local BLOCK_RANGE     = 8
 local DASH_RANGE      = 15
-local SKILL_RANGE     = 15
 local BLOCK_HOLD_TIME = 0.25
 
-_G.AutoBlock_Enabled        = false
-_G.AutoBlockDash_Enabled    = false
-_G.AutoSkillBlock_Enabled   = false
-_G.AutoCounter_Enabled      = false
-_G.AwakeningCounter_Enabled = false
+_G.AutoBlock_Enabled     = false
+_G.AutoBlockDash_Enabled = false
 
 -- ════════════════════════════════════════════════════════════════
 --  HELPERS
@@ -227,7 +231,7 @@ local function isLocalPlayer(p)
 end
 
 -- ════════════════════════════════════════════════════════════════
---  MEMORY HELPERS (ANIMATION ONLY)
+--  MEMORY HELPERS
 -- ════════════════════════════════════════════════════════════════
 
 local function readStr(addr)
@@ -471,9 +475,7 @@ local function RunCharaQTE()
     local line = bar:FindFirstChild("Line")
     if not line then return end
     CharaQTEState.active = true
-    local barX    = bar.AbsolutePosition.X
-    local barW    = bar.AbsoluteSize.X
-    local centerX = barX + barW / 2
+    local centerX  = bar.AbsolutePosition.X + bar.AbsoluteSize.X / 2
     local prevDist = math.huge
     while uiComponent.Parent and bar.Parent and line.Parent do
         local lineCenterX = line.AbsolutePosition.X + line.AbsoluteSize.X / 2
@@ -490,23 +492,18 @@ end
 -- ════════════════════════════════════════════════════════════════
 
 local function CreateESPDrawing(name, color)
-    local drawing        = Drawing.new("Text")
-    drawing.Font         = Drawing.Fonts.System
-    drawing.Text         = name
-    drawing.Color        = Color3.fromRGB(color[1], color[2], color[3])
-    drawing.Outline      = true
-    drawing.Center       = true
-    drawing.Visible      = false
+    local drawing   = Drawing.new("Text")
+    drawing.Font    = Drawing.Fonts.System
+    drawing.Text    = name
+    drawing.Color   = Color3.fromRGB(color[1], color[2], color[3])
+    drawing.Outline = true
+    drawing.Center  = true
+    drawing.Visible = false
     return drawing
 end
 
 local function RemoveESPDrawing(espObj)
     if espObj and espObj.drawing then espObj.drawing:Remove() end
-end
-
-local function ClearAllESP()
-    for _, espObj in pairs(ESPState.objects) do RemoveESPDrawing(espObj) end
-    ESPState.objects = {}
 end
 
 local function UpdateESPPositions()
@@ -605,7 +602,6 @@ local function UpdateDomainHealthESP()
     local domainsFolder = workspace:FindFirstChild("Domains")
     local playerPos     = GetPlayerPosition()
     local nearbyThresh  = CONFIG.domainHealthESP.nearbyThreshold
-
     local screenCenterX = 960
     local cam = workspace.CurrentCamera
     if cam then
@@ -617,7 +613,6 @@ local function UpdateDomainHealthESP()
             screenCenterX = cam.ViewportSize.X / 2
         end
     end
-
     local seenAddresses = {}
     if domainsFolder then
         for _, domain in ipairs(domainsFolder:GetChildren()) do
@@ -654,7 +649,7 @@ local function UpdateDomainHealthESP()
 end
 
 -- ════════════════════════════════════════════════════════════════
---  DOMAIN VOTES (Hiromi)
+--  DOMAIN VOTES
 -- ════════════════════════════════════════════════════════════════
 
 local function HasHiromiMoveset() return HasMoveset("Hiromi") end
@@ -734,9 +729,9 @@ local function GetChooseButtonPositions()
     local function getPos(name)
         local btn = chooseUI:FindFirstChild(name)
         if btn then
-            local pos  = btn.AbsolutePosition
-            local size = btn.AbsoluteSize
-            return Vector2.new(pos.X + size.X / 2, pos.Y - 30)
+            return Vector2.new(
+                btn.AbsolutePosition.X + btn.AbsoluteSize.X / 2,
+                btn.AbsolutePosition.Y - 30)
         end
         return nil
     end
@@ -767,12 +762,10 @@ end
 
 local function ProcessDomainVotes()
     if not CONFIG.domainVotes.enabled then
-        if DomainState.isActive then ResetDomainState() end
-        return
+        if DomainState.isActive then ResetDomainState() end return
     end
     if not HasHiromiMoveset() then
-        if DomainState.isActive or DomainState.waitingForChooseUI then ResetDomainState() end
-        return
+        if DomainState.isActive or DomainState.waitingForChooseUI then ResetDomainState() end return
     end
     local currentTime = GetTime()
     local gPressed    = iskeypressed(KEYS.G)
@@ -783,8 +776,7 @@ local function ProcessDomainVotes()
     DomainState.gWasPressed = gPressed
     if DomainState.waitingForChooseUI then
         if currentTime - DomainState.waitStartTime > 6.0 then
-            DomainState.waitingForChooseUI = false
-            return
+            DomainState.waitingForChooseUI = false return
         end
         if HasChooseUI() then
             DomainState.waitingForChooseUI = false
@@ -801,8 +793,7 @@ local function ProcessDomainVotes()
     end
     if DomainState.isActive then
         if not HasChooseUI() or not DomainState.trackedDomain or not DomainState.trackedDomain.Parent then
-            ResetDomainState()
-            return
+            ResetDomainState() return
         end
         local confess, silence, denial = GetDomainVotes(DomainState.trackedDomain)
         if confess ~= DomainState.confessCount or silence ~= DomainState.silenceCount or denial ~= DomainState.denialCount then
@@ -816,110 +807,14 @@ local function ProcessDomainVotes()
 end
 
 -- ════════════════════════════════════════════════════════════════
---  COUNTER / AWAKENING HELPERS
--- ════════════════════════════════════════════════════════════════
-
-local function isUltimateReady()
-    local gui = LocalPlayer and LocalPlayer:FindFirstChild("PlayerGui")
-    if not gui then return false end
-    local readyFrame = SafeFind(gui, "Main", "Ultimate", "Bar", "Ready")
-    if not readyFrame then return false end
-    local addr = tonumber(readyFrame.Address)
-    if not addr or addr <= 4096 then return false end
-    local ok, byte = pcall(memory_read, "byte", addr + VISIBLE_OFFSET)
-    return ok and byte ~= 0
-end
-
-local function checkForLuckyCoward()
-    local gui     = LocalPlayer:FindFirstChild("PlayerGui")
-    local moveset = gui and SafeFind(gui, "Main", "Moveset")
-    return moveset and moveset:FindFirstChild("Dirty Play") ~= nil
-end
-
-local function checkEquippedAbilities()
-    local gui     = LocalPlayer:FindFirstChild("PlayerGui")
-    local moveset = gui and SafeFind(gui, "Main", "Moveset")
-    if not moveset then return end
-
-    headOfHeiEquipped = moveset:FindFirstChild("Projection Breaker") ~= nil
-    charlesEquipped   = moveset:FindFirstChild("Eye Catching") ~= nil
-
-    if headOfHeiEquipped then
-        if _G.AwakeningCounter_Enabled and not headOfHeiEquippedNotified then
-            Win:Notify("Equipment", "Head of Hei equipped - Awakening ready", 2)
-            headOfHeiEquippedNotified = true
-        end
-    else
-        headOfHeiEquippedNotified = false
-    end
-
-    if charlesEquipped then
-        if _G.AutoCounter_Enabled and not charlesEquippedNotified then
-            Win:Notify("Counter", "Charles Counter Ready", 2)
-            charlesEquippedNotified = true
-        end
-    else
-        charlesEquippedNotified = false
-    end
-
-    local hasLucky = checkForLuckyCoward()
-    if hasLucky ~= luckyCowardEquipped then
-        luckyCowardEquipped = hasLucky
-        if _G.AutoCounter_Enabled and luckyCowardEquipped and not luckyCowardEquippedNotified then
-            Win:Notify("Counter", "Lucky Coward Counter Available", 3)
-            luckyCowardEquippedNotified = true
-        elseif not luckyCowardEquipped then
-            luckyCowardEquippedNotified = false
-        end
-    end
-end
-
-local function monitorCharlesCooldown()
-    local gui     = LocalPlayer:FindFirstChild("PlayerGui")
-    local moveset = gui and SafeFind(gui, "Main", "Moveset")
-    if not moveset then return true end
-    local eyeFrame = moveset:FindFirstChild("Eye Catching")
-    if not eyeFrame then return true end
-    local cooldown = eyeFrame:FindFirstChild("Cooldown")
-    if not cooldown then return true end
-
-    charlesCooldownAddr = tonumber(cooldown.Address)
-    if not charlesCooldownAddr or charlesCooldownAddr <= 4096 then return true end
-
-    local ok, secondsLeft = pcall(memory_read, "float", charlesCooldownAddr + VALUE_OFFSET)
-    if not ok or secondsLeft ~= secondsLeft then return true end
-
-    local isOnCD = secondsLeft > 0.1
-    if isOnCD ~= charlesLastState then
-        if isOnCD then
-            Win:Notify("Charles", "Eye Catching on cooldown - " .. math.floor(secondsLeft) .. "s", 2)
-        else
-            Win:Notify("Charles", "Eye Catching ready", 2)
-        end
-        charlesLastState = isOnCD
-    end
-    charlesOnCooldown = isOnCD
-    return not isOnCD
-end
-
--- ════════════════════════════════════════════════════════════════
---  UI  (GalaxLib)
+--  UI
 -- ════════════════════════════════════════════════════════════════
 
 local DefenseTab = Win:AddTab("Defense")
 local DefSec     = DefenseTab:AddSection("Auto Defense")
 
-DefSec:AddToggle("Auto Block",       false, function(v) _G.AutoBlock_Enabled        = v end)
-DefSec:AddToggle("Auto Block Dash",  false, function(v) _G.AutoBlockDash_Enabled    = v end)
-DefSec:AddToggle("Auto Skill Block", false, function(v) _G.AutoSkillBlock_Enabled   = v end)
-DefSec:AddToggle("Auto Counter",     false, function(v)
-    _G.AutoCounter_Enabled = v
-    if v then task.spawn(function() task.wait(0.5) checkEquippedAbilities() end) end
-end)
-DefSec:AddToggle("Awakening Counter", false, function(v)
-    _G.AwakeningCounter_Enabled = v
-    if v then task.spawn(function() task.wait(0.5) checkEquippedAbilities() end) end
-end)
+DefSec:AddToggle("Auto Block",      false, function(v) _G.AutoBlock_Enabled     = v end)
+DefSec:AddToggle("Auto Block Dash", false, function(v) _G.AutoBlockDash_Enabled = v end)
 
 local AutoTab   = Win:AddTab("Automation")
 local QTESec    = AutoTab:AddSection("Defense Attorney")
@@ -955,12 +850,12 @@ local ESPTab      = Win:AddTab("ESP")
 local ESPSec      = ESPTab:AddSection("ESP Settings")
 local DomainHPSec = ESPTab:AddSection("Domain Health")
 
-ESPSec:AddToggle("Enable ESP",  false, function(v)
+ESPSec:AddToggle("Enable ESP", false, function(v)
     CONFIG.esp.enabled = v
     if not v then for _, obj in pairs(ESPState.objects) do if obj.drawing then obj.drawing.Visible = false end end end
 end)
-ESPSec:AddToggle("Dummy ESP",  true,  function(v) CONFIG.esp.dummy  = v end)
-ESPSec:AddToggle("Items ESP",  true,  function(v) CONFIG.esp.items  = v end)
+ESPSec:AddToggle("Dummy ESP", true,  function(v) CONFIG.esp.dummy = v end)
+ESPSec:AddToggle("Items ESP", true,  function(v) CONFIG.esp.items = v end)
 DomainHPSec:AddToggle("Domain Health ESP", false, function(v)
     CONFIG.domainHealthESP.enabled = v
     if not v then
@@ -978,25 +873,17 @@ Win:Notify("Jujutsu Hub", "Loaded!", 3)
 
 local blockTriggered = false
 local dashTriggered  = false
-local skillTriggered = false
 local blockStart     = 0
 local dashStart      = 0
 
 task.spawn(function()
     while true do
         task.wait()
-        checkEquippedAbilities()
-
-        local charlesReady = true
-        if _G.AutoCounter_Enabled and charlesEquipped then
-            charlesReady = monitorCharlesCooldown()
-        end
 
         local myChar = LocalPlayer and LocalPlayer.Character
         if not myChar then
-            if blockTriggered then keyrelease(KEY_F); blockTriggered = false end
-            if dashTriggered  then keyrelease(KEY_F); dashTriggered  = false end
-            if skillTriggered then keyrelease(KEY_F); skillTriggered = false end
+            if blockTriggered then keyrelease(KEY_F) blockTriggered = false end
+            if dashTriggered  then keyrelease(KEY_F) dashTriggered  = false end
             continue
         end
 
@@ -1005,9 +892,7 @@ task.spawn(function()
                     or myChar:FindFirstChild("UpperTorso")
         if not myRoot then continue end
 
-        local blockAnimPlayer, dashAnimPlayer, skillAnimPlayer = nil, nil, nil
-        local blockAnimId,     dashAnimId,     skillAnimId     = nil, nil, nil
-        local anyAnimPlayer,   anyAnimId       = nil, nil
+        local blockAnimPlayer, dashAnimPlayer = nil, nil
 
         for _, p in ipairs(Players:GetPlayers()) do
             if not p or isLocalPlayer(p) or not p.Character then continue end
@@ -1017,68 +902,27 @@ task.spawn(function()
             if not theirRoot then continue end
             local dist = getMagnitude(theirRoot.Position, myRoot.Position)
 
-            if dist <= BLOCK_RANGE then
-                local id = getCurrentAnimFromChar(p.Character, BlockMode)
-                if id then
-                    blockAnimPlayer = p; blockAnimId = id
-                    anyAnimPlayer   = p; anyAnimId   = id
+            if dist <= BLOCK_RANGE and not blockAnimPlayer then
+                if getCurrentAnimFromChar(p.Character, BlockMode) then
+                    blockAnimPlayer = p
                 end
             end
-
-            if dist <= DASH_RANGE then
-                local id = getCurrentAnimFromChar(p.Character, DashMode)
-                if id then
-                    dashAnimPlayer = p; dashAnimId = id
-                    anyAnimPlayer  = p; anyAnimId  = id
+            if dist <= DASH_RANGE and not dashAnimPlayer then
+                if getCurrentAnimFromChar(p.Character, DashMode) then
+                    dashAnimPlayer = p
                 end
             end
-
-            if dist <= SKILL_RANGE then
-                local id = getCurrentAnimFromChar(p.Character, SkillBlockMode)
-                if id then
-                    skillAnimPlayer = p; skillAnimId = id
-                    anyAnimPlayer   = p; anyAnimId   = id
-                end
-            end
+            if blockAnimPlayer and dashAnimPlayer then break end
         end
 
-        if _G.AutoCounter_Enabled and anyAnimPlayer and anyAnimId then
-            if luckyCowardEquipped then
-                mouse1click()
-                if blockTriggered then keyrelease(KEY_F); blockTriggered = false end
-                if dashTriggered  then keyrelease(KEY_F); dashTriggered  = false end
-                if skillTriggered then keyrelease(KEY_F); skillTriggered = false end
-                continue
-            elseif charlesEquipped and charlesReady then
-                keypress(KEY_3); keyrelease(KEY_3)
-                if blockTriggered then keyrelease(KEY_F); blockTriggered = false end
-                if dashTriggered  then keyrelease(KEY_F); dashTriggered  = false end
-                if skillTriggered then keyrelease(KEY_F); skillTriggered = false end
-                continue
-            end
-        end
-
-        -- Auto Skill Block: segura F enquanto a animação durar, solta + M1 quando acabar
-        if _G.AutoSkillBlock_Enabled and skillAnimPlayer and skillAnimId then
-            if not skillTriggered then
-                skillTriggered = true
-                keypress(KEY_F)
-            end
-            continue
-        end
-        if skillTriggered then
-            keyrelease(KEY_F)
-            mouse1click()
-            skillTriggered = false
-        end
-
-        if _G.AutoBlockDash_Enabled and dashAnimPlayer and dashAnimId then
+        -- Auto Block Dash
+        if _G.AutoBlockDash_Enabled and dashAnimPlayer then
             if not dashTriggered then
                 dashTriggered = true
                 dashStart     = tick()
                 keypress(KEY_F)
             end
-            if dashTriggered and tick() - dashStart >= BLOCK_HOLD_TIME then
+            if tick() - dashStart >= BLOCK_HOLD_TIME then
                 keyrelease(KEY_F)
                 mouse1click()
                 dashTriggered = false
@@ -1086,13 +930,14 @@ task.spawn(function()
             continue
         end
 
-        if _G.AutoBlock_Enabled and blockAnimPlayer and blockAnimId then
+        -- Auto Block
+        if _G.AutoBlock_Enabled and blockAnimPlayer then
             if not blockTriggered then
                 blockTriggered = true
                 blockStart     = tick()
                 keypress(KEY_F)
             end
-            if blockTriggered and tick() - blockStart >= BLOCK_HOLD_TIME then
+            if tick() - blockStart >= BLOCK_HOLD_TIME then
                 keyrelease(KEY_F)
                 mouse1click()
                 blockTriggered = false
@@ -1100,64 +945,14 @@ task.spawn(function()
             continue
         end
 
-        if blockTriggered then keyrelease(KEY_F); blockTriggered = false end
-        if dashTriggered  then keyrelease(KEY_F); dashTriggered  = false end
-    end
-end)
-
--- ════════════════════════════════════════════════════════════════
---  AWAKENING COUNTER LOOP
--- ════════════════════════════════════════════════════════════════
-
-task.spawn(function()
-    while true do
-        task.wait()
-        if not _G.AwakeningCounter_Enabled then continue end
-        if not isUltimateReady() then continue end
-        if not headOfHeiEquipped and not charlesEquipped then continue end
-
-        local myChar = LocalPlayer and LocalPlayer.Character
-        if not myChar then continue end
-        local myRoot = myChar:FindFirstChild("HumanoidRootPart")
-                    or myChar:FindFirstChild("Torso")
-                    or myChar:FindFirstChild("UpperTorso")
-        if not myRoot then continue end
-
-        for _, p in ipairs(Players:GetPlayers()) do
-            if not p or isLocalPlayer(p) or not p.Character then continue end
-            local theirRoot = p.Character:FindFirstChild("HumanoidRootPart")
-                           or p.Character:FindFirstChild("Torso")
-                           or p.Character:FindFirstChild("UpperTorso")
-            if not theirRoot then continue end
-            local dist = getMagnitude(theirRoot.Position, myRoot.Position)
-            if dist <= BLOCK_RANGE then
-                local blockAnim = getCurrentAnimFromChar(p.Character, BlockMode)
-                local dashAnim  = getCurrentAnimFromChar(p.Character, DashMode)
-                if blockAnim or dashAnim then
-                    keypress(KEY_G); task.wait(0.1); keyrelease(KEY_G)
-                    if tick() - lastAwakeningNotif > notifCooldown then
-                        Win:Notify("Awakening", "Awakening counter on " .. p.Name, 2)
-                        lastAwakeningNotif = tick()
-                    end
-                    break
-                end
-            end
-        end
+        if blockTriggered then keyrelease(KEY_F) blockTriggered = false end
+        if dashTriggered  then keyrelease(KEY_F) dashTriggered  = false end
     end
 end)
 
 -- ════════════════════════════════════════════════════════════════
 --  BACKGROUND LOOPS
 -- ════════════════════════════════════════════════════════════════
-
-task.spawn(function()
-    while true do
-        if _G.AutoCounter_Enabled or _G.AwakeningCounter_Enabled then
-            checkEquippedAbilities()
-        end
-        task.wait(1)
-    end
-end)
 
 spawn(function()
     while running do
@@ -1168,12 +963,8 @@ spawn(function()
                     delay = delay + (math.random() * 2 - 1) * CONFIG.autoQTE.deviation
                 end
                 task.wait(delay)
-            else
-                task.wait(0.05)
-            end
-        else
-            task.wait(0.1)
-        end
+            else task.wait(0.05) end
+        else task.wait(0.1) end
     end
 end)
 
@@ -1185,26 +976,9 @@ spawn(function()
     end
 end)
 
-spawn(function()
-    while running do pcall(DiscoverESPObjects) task.wait(0.5) end
-end)
-
-spawn(function()
-    while running do pcall(ProcessRatioQTE) task.wait(0.016) end
-end)
-
-spawn(function()
-    while running do pcall(ProcessPerfectSwap) task.wait(0.01) end
-end)
-
-spawn(function()
-    while running do pcall(RunCharaQTE) task.wait(0.2) end
-end)
-
-spawn(function()
-    while running do pcall(ProcessDomainVotes) task.wait(0.05) end
-end)
-
-spawn(function()
-    while running do currentPing = GetPing() task.wait(1) end
-end)
+spawn(function() while running do pcall(DiscoverESPObjects) task.wait(0.5)  end end)
+spawn(function() while running do pcall(ProcessRatioQTE)    task.wait(0.016) end end)
+spawn(function() while running do pcall(ProcessPerfectSwap) task.wait(0.01)  end end)
+spawn(function() while running do pcall(RunCharaQTE)        task.wait(0.2)   end end)
+spawn(function() while running do pcall(ProcessDomainVotes) task.wait(0.05)  end end)
+spawn(function() while running do currentPing = GetPing()   task.wait(1)     end end)
