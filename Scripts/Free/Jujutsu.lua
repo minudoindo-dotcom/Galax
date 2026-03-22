@@ -981,7 +981,6 @@ local dashTriggered  = false
 local skillTriggered = false
 local blockStart     = 0
 local dashStart      = 0
-local skillStart     = 0
 
 task.spawn(function()
     while true do
@@ -1059,18 +1058,18 @@ task.spawn(function()
             end
         end
 
+        -- Auto Skill Block: segura F enquanto a animação durar, solta + M1 quando acabar
         if _G.AutoSkillBlock_Enabled and skillAnimPlayer and skillAnimId then
             if not skillTriggered then
                 skillTriggered = true
-                skillStart     = tick()
                 keypress(KEY_F)
             end
-            if skillTriggered and tick() - skillStart >= BLOCK_HOLD_TIME then
-                keyrelease(KEY_F)
-                mouse1click()
-                skillTriggered = false
-            end
             continue
+        end
+        if skillTriggered then
+            keyrelease(KEY_F)
+            mouse1click()
+            skillTriggered = false
         end
 
         if _G.AutoBlockDash_Enabled and dashAnimPlayer and dashAnimId then
@@ -1103,7 +1102,6 @@ task.spawn(function()
 
         if blockTriggered then keyrelease(KEY_F); blockTriggered = false end
         if dashTriggered  then keyrelease(KEY_F); dashTriggered  = false end
-        if skillTriggered then keyrelease(KEY_F); skillTriggered = false end
     end
 end)
 
