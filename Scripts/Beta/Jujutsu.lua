@@ -1,1437 +1,1823 @@
 -- ════════════════════════════════════════════════════════════════
---  Jujutsu Hub
---  UI: GalaxLib
+--  Bizarre Hub
+--  Author  : Whymayko
+--  Lib     : GalaxLib (loaded below)
 -- ════════════════════════════════════════════════════════════════
 
-loadstring(game:HttpGet("https://raw.githubusercontent.com/minudoindo-dotcom/Galax/refs/heads/main/Lib/Beta/Galax.lua"))()
+-- ── 1. LIBS ──────────────────────────────────────────────────────
+loadstring(game:HttpGet("https://pastebin.com/raw/bghZmR8D"))()
 
+-- ── 2. OFFSETS (auto-fetch, fallback hardcoded) ──────────────────
+local _OFFSETS_URL = "https://imtheo.lol/Offsets/version-ae421f0582e54718/Offsets.json"
+local _O = {}
+do
+    local ok, raw = pcall(game.HttpGet, game, _OFFSETS_URL)
+    if ok and raw and #raw > 10 then
+        local jok, decoded = pcall(function()
+            return game:GetService("HttpService"):JSONDecode(raw)
+        end)
+        if jok and decoded and decoded.Offsets then _O = decoded.Offsets end
+    end
+end
+local primOffset = (_O.BasePart  and _O.BasePart.Primitive)  or 328
+local rotOffset  = (_O.Primitive and _O.Primitive.Rotation)   or 192
+
+-- ── 3. CORE: LookAt + TrackTarget + ESP ─────────────────────────
+local _cachedPrim    = nil
+local _cachedHrpAddr = nil
+
+local function getLookAtMatrix(fromPos, toPos)
+    local dx,dy,dz = toPos.X-fromPos.X, toPos.Y-fromPos.Y, toPos.Z-fromPos.Z
+    local zx,zy,zz = -dx,-dy,-dz
+    local zmag = math.sqrt(zx*zx+zy*zy+zz*zz)
+    if zmag == 0 then return {1,0,0,0,1,0,0,0,1} end
+    zx,zy,zz = zx/zmag,zy/zmag,zz/zmag
+    local ux,uy,uz = 0,1,0
+    if math.abs(zy) > 0.9999 then ux,uy,uz=0,0,1 end
+    local xx,xy,xz = uy*zz-uz*zy, uz*zx-ux*zz, ux*zy-uy*zx
+    local xmag = math.sqrt(xx*xx+xy*xy+xz*xz)
+    xx,xy,xz = xx/xmag,xy/xmag,xz/xmag
+    local yx,yy,yz = zy*xz-zz*xy, zz*xx-zx*xz, zx*xy-zy*xx
+    return {xx,yx,zx,xy,yy,zy,xz,yz,zz}
+end
+
+local function applyLookAt(hrp, targetPos)
+    local flat = Vector3.new(targetPos.X, hrp.Position.Y, targetPos.Z)
+    pcall(function() hrp.CFrame = CFrame.lookAt(hrp.Position, flat) end)
+    local addr = tonumber(hrp.Address)
+    if not addr or addr == 0 then return end
+    if addr ~= _cachedHrpAddr then
+        local prim = memory_read("uintptr_t", addr + primOffset)
+        if not prim or prim == 0 then return end
+        _cachedPrim = prim; _cachedHrpAddr = addr
+    end
+    local mat  = getLookAtMatrix(hrp.Position, targetPos)
+    local base = _cachedPrim + rotOffset
+    for i = 0, 8 do memory_write("float", base + i*4, mat[i+1]) end
+end
+
+-- ESP helpers
+local function _newEspLine(col)
+    local l = Drawing.new("Line"); l.Color=col or Color3.new(1,1,1); l.Thickness=1.5; l.Visible=false; return l
+end
+local function _newEspText(col, sz)
+    local t = Drawing.new("Text")
+    t.Font=Drawing.Fonts.UI; t.Size=sz or 13
+    t.Color=col or Color3.new(1,1,1); t.Outline=true; t.Center=true; t.ZIndex=10; t.Visible=false; return t
+end
+local function _newCornerBox(col)
+    local lines={}; for i=1,8 do lines[i]=_newEspLine(col) end; return lines
+end
+local function _drawCornerBox(lines, x, y, hw, hh, len, col)
+    for _,l in ipairs(lines) do l.Color=col end
+    lines[1].From=Vector2.new(x-hw,y-hh); lines[1].To=Vector2.new(x-hw+len,y-hh)
+    lines[2].From=Vector2.new(x-hw,y-hh); lines[2].To=Vector2.new(x-hw,y-hh+len)
+    lines[3].From=Vector2.new(x+hw,y-hh); lines[3].To=Vector2.new(x+hw-len,y-hh)
+    lines[4].From=Vector2.new(x+hw,y-hh); lines[4].To=Vector2.new(x+hw,y-hh+len)
+    lines[5].From=Vector2.new(x+hw,y+hh); lines[5].To=Vector2.new(x+hw-len,y+hh)
+    lines[6].From=Vector2.new(x+hw,y+hh); lines[6].To=Vector2.new(x+hw,y+hh-len)
+    lines[7].From=Vector2.new(x-hw,y+hh); lines[7].To=Vector2.new(x-hw+len,y+hh)
+    lines[8].From=Vector2.new(x-hw,y+hh); lines[8].To=Vector2.new(x-hw,y+hh-len)
+    for _,l in ipairs(lines) do l.Visible=true end
+end
+local function _hideCornerBox(lines) for _,l in ipairs(lines) do l.Visible=false end end
+
+local ESP = {}
+function ESP.Create(part, cfg)
+    cfg = cfg or {}
+    local col = cfg.color or Color3.fromRGB(255,215,0)
+    return { part=part, cfg=cfg, box=_newCornerBox(col), label=_newEspText(col,13), distLabel=_newEspText(Color3.new(1,1,1),13), tracer=_newEspLine(col) }
+end
+function ESP.Update(esp, myPos)
+    local part=esp.part; local cfg=esp.cfg
+    if not part or not part.Parent then ESP.Hide(esp); return false end
+    local col=cfg.color or Color3.fromRGB(255,215,0)
+    local tp=part.Position
+    local d=tp-myPos; local dist=math.floor(math.sqrt(d.X^2+d.Y^2+d.Z^2))
+    local pos, onScreen = WorldToScreen(tp)
+    if not pos or not onScreen then ESP.Hide(esp); return false end
+    local x,y=pos.X,pos.Y; local hw,hh=cfg.hw or 22,cfg.hh or 22
+    if cfg.box then _drawCornerBox(esp.box,x,y,hw,hh,8,col) else _hideCornerBox(esp.box) end
+    local distStr="["..dist.."m]"; local topY=y-hh-14; local label=cfg.nameText or (part.Name or "?")
+    if cfg.name then
+        local GAP=10; local nameW=#label*6; local dW=cfg.distance and (#distStr*6) or 0
+        local totalW=nameW+(cfg.distance and GAP or 0)+dW
+        esp.label.Text=label; esp.label.Color=col
+        esp.label.Position=Vector2.new(x-totalW/2+nameW/2,topY); esp.label.Visible=true
+        if cfg.distance then
+            esp.distLabel.Text=" "..distStr
+            esp.distLabel.Position=Vector2.new(x-totalW/2+nameW+GAP+dW/2,topY); esp.distLabel.Visible=true
+        else esp.distLabel.Visible=false end
+    else
+        esp.label.Visible=false
+        if cfg.distance then esp.distLabel.Text=distStr; esp.distLabel.Position=Vector2.new(x,topY); esp.distLabel.Visible=true
+        else esp.distLabel.Visible=false end
+    end
+    if cfg.line then
+        local scr=workspace.CurrentCamera.ViewportSize
+        esp.tracer.From=Vector2.new(scr.X/2,scr.Y); esp.tracer.To=Vector2.new(x,y)
+        esp.tracer.Color=col; esp.tracer.Visible=true
+    else esp.tracer.Visible=false end
+    return true
+end
+function ESP.Hide(esp)
+    _hideCornerBox(esp.box); esp.label.Visible=false; esp.distLabel.Visible=false; esp.tracer.Visible=false
+end
+function ESP.Destroy(esp)
+    for _,l in ipairs(esp.box) do l:Remove() end
+    esp.label:Remove(); esp.distLabel:Remove(); esp.tracer:Remove()
+end
+
+-- ── 3. WINDOW ────────────────────────────────────────────────────
 local Win = GalaxLib:CreateWindow({
-    Title   = "Jujutsu Hub",
-    Size    = Vector2.new(500, 520),
+    Title   = "Bizarre Hub",
+    Size    = Vector2.new(625, 510),
     MenuKey = 0x70,
 })
 
-local Players     = game:GetService("Players")
-local LocalPlayer = Players.LocalPlayer
-local workspace   = game:GetService("Workspace")
-
-local KEYS = { W = 0x57, A = 0x41, S = 0x53, D = 0x44, F = 0x46, R = 0x52, G = 0x47, THREE = 0x33 }
-local VALID_QTE_KEYS     = { ["W"] = KEYS.W, ["A"] = KEYS.A, ["S"] = KEYS.S, ["D"] = KEYS.D }
-local PERFECT_SWAP_MOVES = { "Swift Kick", "Brute Force", "Pebble Throw", "Elbow Drop" }
-local ULT_SWAP_MOVES     = { "Idol's Debut", "Climax Jumping", "Dreams", "Brothers" }
-
-local CONFIG = {
-    autoQTE      = { enabled = false, postPressDelay = 0.30, deviation = 0 },
-    ratioQTE     = { enabled = false, baseDelay = 0.60, minDelay = 0.40, healthFloor = 0.60 },
-    charaQTE     = { enabled = false },
-    perfectSwap  = { enabled = false, scanTimeout = 2.0 },
-    esp          = { enabled = false, dummy = true, items = true,
-                     colorDummy = {255, 100, 100}, colorItems = {100, 255, 100}, updateRate = 60 },
-    domainVotes     = { enabled = false },
-    domainHealthESP = { enabled = false, nearbyThreshold = 40 },
-}
-
-local QTEState      = { detectedKey = "", detectedTime = 0, displayDuration = 1.0 }
-local RatioState    = { rWasPressed = false, isScanning = false, scanStartTime = 0,
-                        trackedTarget = nil, trackedRatioValue = nil, qteDetectedTime = 0,
-                        hasTriggered = false, targetHealthPercent = 1.0, calculatedDelay = 0.60,
-                        lastTriggerTime = 0, triggerCooldown = 0.3 }
-local CharaQTEState = { active = false }
-local SwapState     = { rWasPressed = false, isScanning = false, scanStartTime = 0,
-                        swapConfirmed = false, effectsSnapshot = {}, hasTriggeredM1 = false }
-local ESPState      = { objects = {}, lastDiscovery = 0 }
-local DomainState   = { isActive = false, trackedDomain = nil, gWasPressed = false,
-                        waitingForChooseUI = false, waitStartTime = 0,
-                        confessCount = 0, silenceCount = 0, denialCount = 0,
-                        confessDrawing = nil, silenceDrawing = nil, denialDrawing = nil }
-local DomainHealthESPState = { drawings = {} }
-
-local currentPing   = 0
-local running       = true
-
-local lastAwakeningNotif      = 0
-local notifCooldown           = 3
-local charlesEquippedNotified = false
-local headOfHeiEquippedNotified = false
-local luckyCowardEquippedNotified = false
-local charlesOnCooldown       = false
-local headOfHeiEquipped       = false
-local charlesEquipped         = false
-local luckyCowardEquipped     = false
-local charlesCooldownAddr     = nil
-local charlesLastState        = false
+-- ── isSpawned: true quando o boneco está em Workspace.Live ───────
+local function isSpawned()
+    local lp = game.Players.LocalPlayer
+    if not lp then return false end
+    local live = game.Workspace:FindFirstChild("Live")
+    return live and live:FindFirstChild(lp.Name) ~= nil
+end
 
 -- ════════════════════════════════════════════════════════════════
---  OFFSETS  (version-ae421f0582e54718)
+--  4. DATA TABLES
 -- ════════════════════════════════════════════════════════════════
 
--- GuiObject.Visible  = 1461  (byte)
-local VISIBLE_OFFSET = 1461
-
--- Sound.SoundId      = 224   (string pointer)
-local SOUNDID_OFFSET = 224
-
--- Misc.Value         = 208   (float for ValueBase cooldown)
-local VALUE_OFFSET   = 208
-
-local INST = {
-    ClassDescriptor = 24,  -- Instance.ClassDescriptor
-    ClassName       = 8,   -- ClassDescriptor → ClassName ptr
-    Name            = 176, -- Instance.Name
+local targetNames = {
+    ["Stand Arrow"]               = Color3.fromRGB(255, 215, 0),
+    ["Lucky Arrow"]               = Color3.fromRGB(200, 0, 255),
+    ["Stone Mask"]                = Color3.fromRGB(163, 162, 165),
+    ["Imperfect Aja"]             = Color3.fromRGB(255, 50, 50),
+    ["Red Stone of Aja"]          = Color3.fromRGB(255, 0, 0),
+    ["Rokakaka"]                  = Color3.fromRGB(218, 133, 156),
+    ["DIO's Diary"]               = Color3.fromRGB(50, 50, 50),
+    ["Stat Point Essence"]        = Color3.fromRGB(100, 255, 100),
+    ["Stand Skin Essence"]        = Color3.fromRGB(0, 255, 255),
+    ["Stand Stat Essence"]        = Color3.fromRGB(255, 100, 0),
+    ["Stand Personality Essence"] = Color3.fromRGB(255, 255, 255),
+    ["Stand Conjuration Essence"] = Color3.fromRGB(150, 0, 255),
 }
 
-local ANIM = {
-    ActiveAnimations = 2152, -- Animator.ActiveAnimations
-    Animation        = 208,  -- AnimationTrack.Animation
-    AnimationId      = 208,  -- Misc.AnimationId (Animation → id ptr)
-    NodeNext         = 16,   -- linked-list node → next ptr
+local NpcOptions = {
+    "???","Akihiko","Ancient Ghost","Arch Mage","Auguste Laurent",
+    "Aya Tsuji","Banker","Boxing Coach","Bruford","Caesar Zeppeli",
+    "Chumbo","Clinician","Corrupt Police Officer","Cultist Leader",
+    "DETERMINATION","Dedequan","Detective","Doctor","Dr. Bosconovitch",
+    "Elder Vampire","Gang Contractor","Gardner Gwen","Geordie Greep",
+    "Gupta","Gym Owner","Hayato","Hotel Manager","Invisible Baby",
+    "Jean Pierre Polnareff","Joseph Joestar","Josuke Higashikata",
+    "Jotaro Kujo","Kaiser","Kakyoin","Karate Sensei","Kobayashi",
+    "Koichi Hirose","Kyle","Lowly Thief","Mafia Boss","Manuscript 1",
+    "Manuscript 2","Manuscript 3","Masuyo","Meditation","Mr. Rengatei",
+    "Muhammad Avdol","Nurse","Okuyasu Nijimura","Phantasm",
+    "Police Officer","Power Box","Pucci","Rahaj","Receptionist",
+    "Reimi","Reina","Ren","Rhett","Rohan Kishibe","Rose",
+    "Rudol von Stroheim","Saitama","Samurai Master","Shadowy Figure",
+    "Shigechi","Shozuki","Sick Girl","Speedwagon Agent",
+    "Speedwagon Researcher","Speedwagon Scientist","The Specialist",
+    "Tonio Trussardi","Toyohiro","Travertine","Yoshikage Kira",
+    "Yukako Yamagishi","Yuto Horigome","Zuleima",
 }
 
-local HUM = {
-    Health    = 404, -- Humanoid.Health
-    MaxHealth = 436, -- Humanoid.MaxHealth
+local Bosses = { "DIO" }
+local optimizedBosses = {}
+for _, bossName in ipairs(Bosses) do
+    local words = {}
+    for word in bossName:lower():gmatch("%a+") do table.insert(words, word) end
+    table.insert(optimizedBosses, { original = bossName, words = words })
+end
+
+local Innocents = { "Hostage" }
+local optimizedInnocents = {}
+for _, name in ipairs(Innocents) do
+    local words = {}
+    for word in name:lower():gmatch("%a+") do table.insert(words, word) end
+    table.insert(optimizedInnocents, { original = name, words = words })
+end
+
+local TpRaidNPCs = {
+    { name = "Kira",   pos = Vector3.new(1025,    875.93, -652.89) },
+    { name = "Chumbo", pos = Vector3.new(1075.07, 884.23,  207.34) },
+    { name = "DIO",    pos = Vector3.new(2797.35, 950.71,  743.84) },
+    { name = "Avdol",  pos = Vector3.new(334.18,  876.08, 1021.47) },
+}
+local TpGangZones = {
+    { name = "Morioh Center" },
+    { name = "Port"          },
+    { name = "Gas Station"   },
+}
+local TpRaceNPCs = {
+    { name = "Hamon",         pos = Vector3.new(1749.23, 874.65, -101.98) },
+    { name = "Cyborg",        pos = Vector3.new(435.83,  886.06, -345.48) },
+    { name = "Elder Vampire", pos = Vector3.new(2655.92, 949.90,  789.73) },
+}
+local TpFightingNPCs = {
+    { name = "Kendo",  pos = Vector3.new(2060.91, 874.65,  -47.55) },
+    { name = "Karate", pos = Vector3.new(544.13,  886.06, -252.10) },
+    { name = "Boxing", pos = Vector3.new(1109,    912,      11)    },
+}
+local TpWorldBosses = {
+    { name = "Dr. Bosconovitch",          pos = Vector3.new(1671.93, 1005.69, 1637.73) },
+    { name = "Zombie Rudol von Stroheim", pos = Vector3.new(1872.55,  956.80, 1886.28) },
+    { name = "Okuyasu Nijimura Prime",    pos = Vector3.new(2332.47,  874.61,  323.02) },
+    { name = "Akira Otoishi",             pos = Vector3.new(-1648.22, 893.65,  972.03) },
+    { name = "Miyamoto Musashi",          pos = Vector3.new(476.21,   886.94,  -82.79) },
+}
+local TpMiscPlaces = {
+    { name = "PVP Board",       pos = Vector3.new(2632.96, 874.66, -211.93)  },
+    { name = "Safe Spot",       pos = Vector3.new(1077.64, 936.01, -1391.41) },
+    { name = "Quest Giver NPC", pos = Vector3.new(701.67,  894.56, -221.74)  },
 }
 
-local CAM = {
-    ViewportSize = 744, -- Camera.ViewportSize (Vector2 as two floats)
-}
-
-local GUI = {
-    AbsolutePosition = 272, -- GuiBase2D.AbsolutePosition
-    AbsoluteSize     = 280, -- GuiBase2D.AbsoluteSize
-}
+local voidKeepY        = -410
+local voidMoveRange    = 100
+local voidMoveSpeed    = 520
+local voidMotionOrigin = nil
 
 -- ════════════════════════════════════════════════════════════════
---  ANIMATION ID TABLES
+--  5. STATE
 -- ════════════════════════════════════════════════════════════════
 
-local BlockMode = {
-    ["100040983719699"]=true,["100474683542881"]=true,["100835844904897"]=true,
-    ["100919783371339"]=true,["101107501526373"]=true,["101283990868172"]=true,
-    ["101681158700275"]=true,["101862938993177"]=true,["102085681670810"]=true,
-    ["102285403332509"]=true,["104087365067491"]=true,["104137631480391"]=true,
-    ["104148378077935"]=true,["105077924973072"]=true,["105287938257399"]=true,
-    ["105376952884290"]=true,["105870773841535"]=true,["105878146832347"]=true,
-    ["106282708121342"]=true,["106474043944206"]=true,["107029561762376"]=true,
-    ["107825127494342"]=true,["108027796023968"]=true,["108376755316792"]=true,
-    ["108449614447004"]=true,["108636011034323"]=true,["108686045412945"]=true,
-    ["108708446862011"]=true,["109299799610861"]=true,["109340494549365"]=true,
-    ["109598602517674"]=true,["109718372214725"]=true,["110146909061402"]=true,
-    ["110978068388232"]=true,["111083699259354"]=true,["111750364977569"]=true,
-    ["112976111828157"]=true,["113963875117859"]=true,["114375152692460"]=true,
-    ["114562626498918"]=true,["114648729358082"]=true,["114797198964940"]=true,
-    ["114913455544468"]=true,["114985590391235"]=true,["115220151812065"]=true,
-    ["115446267797335"]=true,["115586282387431"]=true,["116910683335467"]=true,
-    ["117638619792450"]=true,["117831239064143"]=true,["118634493886688"]=true,
-    ["119042572747325"]=true,["119152716475706"]=true,["119434039452526"]=true,
-    ["120951759618134"]=true,["121322029260156"]=true,["121800365664070"]=true,
-    ["122074769949629"]=true,["122170399962557"]=true,["122573730331631"]=true,
-    ["122655618588472"]=true,["123236749567737"]=true,["123414935051274"]=true,
-    ["124777463468279"]=true,["124862357369335"]=true,["125120382787311"]=true,
-    ["125689391910002"]=true,["126277739156443"]=true,["127851700400958"]=true,
-    ["128267680345523"]=true,["129392532939530"]=true,["130013701390383"]=true,
-    ["130135202362252"]=true,["130284226842903"]=true,["130659585624615"]=true,
-    ["130806585141471"]=true,["131279921755936"]=true,["131967150738931"]=true,
-    ["132855702748568"]=true,["133240987753043"]=true,["133447840605824"]=true,
-    ["133936641185614"]=true,["134243365075812"]=true,["134461702265323"]=true,
-    ["134917827147266"]=true,["136978371933277"]=true,["138169151223960"]=true,
-    ["138489871864252"]=true,["138626478088332"]=true,["138826758216894"]=true,
-    ["139280948741186"]=true,["139833047658617"]=true,["139899183181812"]=true,
-    ["140487289646129"]=true,["140588454098230"]=true,["140597320237985"]=true,
-    ["71784337627181"]=true,["72211631197834"]=true,["72548435296350"]=true,
-    ["73456086297777"]=true,["74550814125588"]=true,["74580112757879"]=true,
-    ["75337033003776"]=true,["75425383606016"]=true,["75961842881209"]=true,
-    ["77284264481284"]=true,["77583711129628"]=true,["78540777177847"]=true,
-    ["79037514387169"]=true,["79086910454958"]=true,["79271374075726"]=true,
-    ["79436586236026"]=true,["79568627671998"]=true,["79718433989469"]=true,
-    ["80150988150906"]=true,["80504019426174"]=true,["81630213087988"]=true,
-    ["81708642912019"]=true,["81786875517933"]=true,["82400997593751"]=true,
-    ["83843118463884"]=true,["84080901810314"]=true,["84359513001979"]=true,
-    ["84442064935420"]=true,["84547415708554"]=true,["84602523265622"]=true,
-    ["84989753395518"]=true,["85068785050521"]=true,["85148168523745"]=true,
-    ["85887300265206"]=true,["86109053396974"]=true,["86626502434817"]=true,
-    ["86918383671100"]=true,["87792276744794"]=true,["88849926869776"]=true,
-    ["89394375446962"]=true,["89537672683114"]=true,["90981055255583"]=true,
-    ["91853462087608"]=true,["91990544700842"]=true,["92424708306981"]=true,
-    ["92966188946988"]=true,["94588892125071"]=true,["94781366396051"]=true,
-    ["95002584969527"]=true,["95295463826732"]=true,["96185406489877"]=true,
-    ["96327114254575"]=true,["96433049733325"]=true,["96513213736303"]=true,
-    ["97207871642820"]=true,["97215638330770"]=true,["97504088532041"]=true,
-    ["97868312130612"]=true,["98365018553171"]=true,["98577624776161"]=true,
-    ["98783064085844"]=true,["98845475810982"]=true,["99205259396653"]=true,
-    ["99451940496871"]=true,["99710481887795"]=true,
-}
+local activeESP          = {}
+local selectedItems      = {}
+local selectedMobs       = {}
+local selectedNpc        = NpcOptions[1]
 
-local DashMode = {
-    ["102567076867813"]=true,["102698645310820"]=true,["134451575263988"]=true,
-    ["70593304937741"]=true,["103513893010999"]=true,["140381676724931"]=true,
-    ["111214152450580"]=true,["85003123457049"]=true,
-    ["136807071694451"]=true,["99026585086806"]=true,["97396408415659"]=true,
-    ["97803359940506"]=true,["127453446770583"]=true,
-    ["115543520504167"]=true,
-    ["110978068388232"]=true,["130284226842903"]=true,["132855702748568"]=true,
-    ["134917827147266"]=true,["140597320237985"]=true,["81708642912019"]=true,
-    ["99451940496871"]=true,["130135202362252"]=true,["104148378077935"]=true,
-    ["124777463468279"]=true,["86626502434817"]=true,["128267680345523"]=true,
-    ["129392532939530"]=true,["120951759618134"]=true,["138169151223960"]=true,
-}
+local heightOffsetValue  = 10
+local heightDirection    = -1
+local heightOffset       = heightOffsetValue * heightDirection
+local xOffset            = 5
 
-local SkillBlockMode = {
-    ["137865634124104"]=true,["137654778575373"]=true,
-    ["77200218033775"]=true,["124901309160375"]=true,
-    ["82541714192027"]=true,["72063002791216"]=true,
-    ["72467492674240"]=true,["108123475959041"]=true,
-    ["132653290201368"]=true,["116432619539029"]=true,
-    ["89092734635186"]=true,["72475960800126"]=true,
-    ["127171275866632"]=true,["100446064103831"]=true,
-    ["84039122607068"]=true,["94720627091769"]=true,
-    ["111720035828971"]=true,["89652378115594"]=true,
-    ["133869529005453"]=true,["135411487367370"]=true,
-    ["104824728032437"]=true,["89582140026963"]=true,
-    ["88911658010897"]=true,["120136894011461"]=true,
-    ["93901924492394"]=true,["105121164520635"]=true,
-    ["86045680364061"]=true,["81210313723714"]=true,
-    ["130957217409359"]=true,["100811576955331"]=true,
-    ["113359849246757"]=true,["139479927693015"]=true,
-    ["129678103897608"]=true,["121550561336691"]=true,
-    ["115097960689033"]=true,["94347210073500"]=true,
-    ["103013818601982"]=true,["79860101129549"]=true,
-    ["102053631728986"]=true,["76957377224584"]=true,
-}
+local currentMobTarget   = nil
+local savedPosMob        = nil
+local currentRaidTarget  = nil
+local savedPosRaid       = nil
+local meditateTarget     = nil
+local pvpTarget          = nil
+local selectedPvpPlayer  = nil
+local savedPosPvp        = nil
+local pvpHeightValue     = 10
+local pvpHeightDirection = -1
+local pvpHeightOffset    = pvpHeightValue * pvpHeightDirection
+local pvpXOffset         = 5
 
-local SkillMode = {
-    ["100446064103831"]=true,["100532748201417"]=true,["100811576955331"]=true,["101162958113766"]=true,["101617544363219"]=true,
-    ["101956908324027"]=true,["102053631728986"]=true,["102221764735089"]=true,["102764091199885"]=true,["103194057617238"]=true,
-    ["103493656287292"]=true,["103960582499076"]=true,["104749346956269"]=true,["104793932628579"]=true,["104824728032437"]=true,
-    ["105068005007692"]=true,["105121164520635"]=true,["105826208784475"]=true,["106649604455931"]=true,["107067953428369"]=true,
-    ["107554693613496"]=true,["108123475959041"]=true,["108319980293313"]=true,["108374320117834"]=true,["108695775669287"]=true,
-    ["108865650924154"]=true,["110906451704074"]=true,["111077341852080"]=true,["111593784328268"]=true,["111720035828971"]=true,
-    ["111952952886712"]=true,["112577421904593"]=true,["113722638806911"]=true,["114277419400774"]=true,["114321791577837"]=true,
-    ["115097960689033"]=true,["115561023870463"]=true,["115589615022077"]=true,["115683433001643"]=true,["116432619539029"]=true,
-    ["116811846715462"]=true,["117178057848472"]=true,["117318845383884"]=true,["117371289990421"]=true,["118076716434659"]=true,
-    ["118326207788271"]=true,["118607369830566"]=true,["120136894011461"]=true,["120319825505172"]=true,["120480195428173"]=true,
-    ["120914276661831"]=true,["121343824534765"]=true,["121923107958102"]=true,["121984128639453"]=true,["122607727974119"]=true,
-    ["123167492985370"]=true,["124243904748268"]=true,["124340599144108"]=true,["124759375124281"]=true,["124901309160375"]=true,
-    ["127171275866632"]=true,["127727754867974"]=true,["127843796051633"]=true,["128537969081721"]=true,["128779949980528"]=true,
-    ["129132347098646"]=true,["130957217409359"]=true,["131219281339199"]=true,["131506102901134"]=true,["131826588098422"]=true,
-    ["131948591638044"]=true,["132281807148575"]=true,["132653290201368"]=true,["132704398648016"]=true,["132725601768618"]=true,
-    ["132748613906344"]=true,["132754851925571"]=true,["132928484483887"]=true,["134777193523837"]=true,["135411487367370"]=true,
-    ["135894053646223"]=true,["136161556678024"]=true,["137007125977081"]=true,["137451357351000"]=true,["137611726964398"]=true,
-    ["137638103122538"]=true,["137654778575373"]=true,["137865634124104"]=true,["139956651661073"]=true,["70840150456007"]=true,
-    ["70890372338556"]=true,["72063002791216"]=true,["72157009600725"]=true,["72343192576784"]=true,["72424828296871"]=true,
-    ["72467492674240"]=true,["72475960800126"]=true,["72932825817330"]=true,["72933571933445"]=true,["73048386765082"]=true,
-    ["73482562876920"]=true,["75390215999547"]=true,["75736902190737"]=true,["76313364850487"]=true,["76519264603956"]=true,
-    ["76957377224584"]=true,["77200218033775"]=true,["77323960817460"]=true,["77833820443705"]=true,["78453184359132"]=true,
-    ["78578012001859"]=true,["79717812541463"]=true,["79860101129549"]=true,["80465501985014"]=true,["80922461169812"]=true,
-    ["81112033595734"]=true,["81210313723714"]=true,["81953935260783"]=true,["81971779090581"]=true,["82149987460883"]=true,
-    ["82541714192027"]=true,["82987093810211"]=true,["84039122607068"]=true,["84716311536982"]=true,["85024950165903"]=true,
-    ["85569553424083"]=true,["86045680364061"]=true,["86073608599582"]=true,["86362077638309"]=true,["86618245908620"]=true,
-    ["87472283043607"]=true,["87481059409847"]=true,["88005970155216"]=true,["88215274584883"]=true,["88911658010897"]=true,
-    ["89092734635186"]=true,["89582140026963"]=true,["89652378115594"]=true,["89677028738408"]=true,["89888040037257"]=true,
-    ["90781290293652"]=true,["91984445049000"]=true,["92081142332466"]=true,["92529934565092"]=true,["92595499555055"]=true,
-    ["93796567192197"]=true,["94223344057046"]=true,["94347210073500"]=true,["94590184881876"]=true,["94616006376147"]=true,
-    ["94720627091769"]=true,["95097480425566"]=true,["95421145178968"]=true,["95494223368246"]=true,["95901746347992"]=true,
-    ["96047028540271"]=true,["96397814657727"]=true,["96466374346823"]=true,
-}
+_G.ESP_Enabled           = false
+_G.AutoFarm_Enabled      = false
+_G.AutoMob_Enabled       = false
+_G.AutoRaid_Enabled      = false
+_G.AutoAttack_Enabled    = false
+_G.AutoStand_Enabled     = false
+_G.FreezeAnim_Enabled    = false
+_G.AutoMeditate_Enabled  = false
+_G.MeditateInteracting   = false
+_G.AutoPvp_Enabled       = false
+_G.AutoPlay_Enabled      = false
+_G.AutoReplay_Enabled    = false
+
+local _cachedHrpAddr = nil
+local _savedAnimator     = nil
+local _savedAnimParent   = nil
+local _savedAnimrParent  = nil
+
+-- Items/Farm state
+local farmUnderground    = false
+local farmSafePos        = nil
+local savedPosSafe       = nil
+_G.AutoCollect_Enabled   = false
+_G.SafePlace_Enabled     = false
+
+-- PVE state
+_G.AutoPVE_Enabled       = false
+local _pveThread         = nil
+local _pveTargets        = nil
+
+local function updateOffset()
+    heightOffset = heightOffsetValue * heightDirection
+end
 
 -- ════════════════════════════════════════════════════════════════
---  SOUND ID TABLES
+--  6. HELPERS
 -- ════════════════════════════════════════════════════════════════
 
-local NormalHitSounds = {
-    ["8595975878"]=true,["8595975458"]=true,["8595974357"]=true,
-    ["4571259077"]=true,["3932145123"]=true,["3932145654"]=true,["3848125583"]=true,
-}
-
-local SpecialHitSounds = {
-    ["89850070587619"]=true,["139739650563219"]=true,["114146716369211"]=true,["89079427123853"]=true,
-    ["91344226850535"]=true,["91019449442779"]=true,["139826126503063"]=true,["135674501661535"]=true,
-    ["94107281648467"]=true,["103563218704266"]=true,
-    ["73369470591089"]=true,["129306040953825"]=true,["133798286166675"]=true,
-    ["133341853236210"]=true,["125024159587132"]=true,["136328533963688"]=true,["139804351541539"]=true,
-    ["88685272276380"]=true,["83770717073727"]=true,["74317472561001"]=true,
-    ["130079449462583"]=true,["102360793155474"]=true,["89651789530111"]=true,["100238850813671"]=true,
-}
-
-local DashSounds = {
-    ["3929467229"]=true,["4909206080"]=true,["114900496731174"]=true,
-    ["83048216359043"]=true,["1295446488"]=true,["1295456280"]=true,
-    ["17046281380"]=true,["17101065425"]=true,["17169364965"]=true,
-    ["3755636152"]=true,["115254148621223"]=true,["140170031367282"]=true,
-    ["92456342640262"]=true,["115290636129284"]=true,
-}
-
-local SkillBlockSounds = {
-    ["102930929366058"]=true,["103563218704266"]=true,["104749346956269"]=true,
-    ["104824728032437"]=true,["104974135649084"]=true,["105213688680216"]=true,
-    ["109864853124500"]=true,["111720035828971"]=true,["111770082377892"]=true,
-    ["112016169570826"]=true,["112176479612273"]=true,["113403339442588"]=true,
-    ["115026144285429"]=true,["116070235847840"]=true,["116622642632294"]=true,
-    ["117954571666770"]=true,["121354995604661"]=true,["124532419231032"]=true,
-    ["125025280611426"]=true,["125037643044310"]=true,["130667216707870"]=true,
-    ["132547948177910"]=true,["132548164020742"]=true,["132826787704625"]=true,
-    ["132856141242580"]=true,["135411487367370"]=true,["135423939868890"]=true,
-    ["140443001346012"]=true,["154787303"]=true,["16773286330"]=true,
-    ["16773286492"]=true,["17046281074"]=true,["17046282624"]=true,
-    ["17046505673"]=true,["17101065020"]=true,["17101065238"]=true,
-    ["17169364647"]=true,["17169365111"]=true,["17169365331"]=true,
-    ["17206057404"]=true,["17269355114"]=true,["17392238265"]=true,
-    ["17392240969"]=true,["18259558246"]=true,["3742310026"]=true,
-    ["3755636152"]=true,["3755636638"]=true,["3932141920"]=true,
-    ["411286671"]=true,["4459570664"]=true,["6881026094"]=true,
-    ["72700191895039"]=true,["72894267845813"]=true,["7307838125"]=true,
-    ["7512928742"]=true,["76957377224584"]=true,["77439795464226"]=true,
-    ["78400218029025"]=true,["79490575410915"]=true,["83883449987100"]=true,
-    ["84039122607068"]=true,["84086575329798"]=true,["84674642106437"]=true,
-    ["858508159"]=true,["89652378115594"]=true,["9066732918"]=true,
-    ["9114427348"]=true,["9116684884"]=true,["9118614717"]=true,
-    ["92772409642805"]=true,["94107281648467"]=true,["94132201322663"]=true,
-    ["94720627091769"]=true,["97479273744599"]=true,
-}
-
--- ════════════════════════════════════════════════════════════════
---  COMBAT CONSTANTS
--- ════════════════════════════════════════════════════════════════
-
-local KEY_F           = 0x46
-local KEY_3           = 0x33
-local KEY_G           = 0x47
-local BLOCK_RANGE     = 8
-local DASH_RANGE      = 15
-local SKILL_RANGE     = 15
-local BLOCK_HOLD_TIME = 0.25
-
-_G.AutoBlock_Enabled        = false
-_G.AutoBlockDash_Enabled    = false
-_G.AutoSkillBlock_Enabled   = false
-_G.AutoCounter_Enabled      = false
-_G.AwakeningCounter_Enabled = false
-
--- ════════════════════════════════════════════════════════════════
---  HELPERS
--- ════════════════════════════════════════════════════════════════
-
-local function GetTime() return os.clock() end
-
-local function SafeFind(parent, ...)
-    if not parent then return nil end
-    for _, name in ipairs({...}) do
-        parent = parent:FindFirstChild(name)
-        if not parent then return nil end
+local function getHrp()
+    local lp = game.Players.LocalPlayer
+    if not lp then return nil end -- Se você saiu do jogo
+    local live = workspace:FindFirstChild("Live")
+    if live then
+        local char = live:FindFirstChild(lp.Name)
+        if char and char.Parent then 
+            return char:FindFirstChild("HumanoidRootPart") 
+        end
     end
-    return parent
+    return nil -- Se você morreu ou ainda não deu spawn
 end
 
-local function GetWorkspaceCharacter()
-    local characters = workspace:FindFirstChild("Characters")
-    return characters and characters:FindFirstChild(LocalPlayer.Name)
+local function trackTarget(hrp, targetHrp, yOff, xOff)
+    local tx,tz = targetHrp.Position.X, targetHrp.Position.Z
+    local dx,dz = tx-hrp.Position.X, tz-hrp.Position.Z
+    local len   = math.sqrt(dx*dx+dz*dz)
+    local bx,bz = 0,0
+    if len > 0.01 and xOff and xOff ~= 0 then
+        bx = -(dx/len)*xOff; bz = -(dz/len)*xOff
+    end
+    hrp.Position = Vector3.new(tx+bx, targetHrp.Position.Y+(yOff or 0), tz+bz)
+    applyLookAt(hrp, targetHrp.Position)
 end
 
-local function GetPlayerPosition()
-    local char = GetWorkspaceCharacter()
-    local hrp  = char and char:FindFirstChild("HumanoidRootPart")
-    return hrp and hrp.Position
-end
-
-local function CalculateDistance(pos1, pos2)
-    if not pos1 or not pos2 then return 0 end
-    local dx, dy, dz = pos2.X - pos1.X, pos2.Y - pos1.Y, pos2.Z - pos1.Z
-    return math.sqrt(dx*dx + dy*dy + dz*dz)
-end
-
-local function getMagnitude(a, b)
-    local diff = a - b
-    return math.sqrt(diff.X^2 + diff.Y^2 + diff.Z^2)
-end
-
-local function GetMovesetAttr()
-    local char = GetWorkspaceCharacter()
-    return char and char:GetAttribute("Moveset")
-end
-
-local function HasMoveset(name) return GetMovesetAttr() == name end
-
-local function HasMovesetMoves(moves)
-    local char = GetWorkspaceCharacter()
-    if not char then return false end
-    local moveset = char:FindFirstChild("Moveset")
-    if not moveset then return false end
-    for _, move in ipairs(moves) do
-        if moveset:FindFirstChild(move) then return true end
+local function isInnocent(obj)
+    local ok, dn = pcall(function() return obj:GetAttribute("DisplayName") end)
+    local modelNameLower = obj.Name and obj.Name:lower() or ""
+    for _, data in ipairs(optimizedInnocents) do
+        if ok and dn and dn:lower() == data.original:lower() then return true end
+        if modelNameLower == data.original:lower() then return true end
+        local allMatch = true
+        for _, word in ipairs(data.words) do
+            if not modelNameLower:find(word, 1, true) then allMatch = false; break end
+        end
+        if allMatch then return true end
     end
     return false
 end
 
-local function GetPing()
-    local ok, v = pcall(function()
-        return game:GetService("Stats"):FindFirstChild("Network"):FindFirstChild("ServerStatsItem"):FindFirstChild("Data Ping").Value
-    end)
-    return (ok and tonumber(v)) or 0
-end
-
-local function isLocalPlayer(p)
-    if p == LocalPlayer then return true end
-    if p.UserId and LocalPlayer and p.UserId == LocalPlayer.UserId then return true end
-    if p.Name and LocalPlayer and p.Name == LocalPlayer.Name then return true end
-    if p.DisplayName and LocalPlayer and p.DisplayName == LocalPlayer.DisplayName then return true end
-    return false
-end
-
--- ════════════════════════════════════════════════════════════════
---  MEMORY HELPERS
--- ════════════════════════════════════════════════════════════════
-
-local function readStr(addr)
-    if not addr or addr <= 4096 then return nil end
-    local ok, v = pcall(memory_read, "string", addr)
-    return ok and v or nil
-end
-
-local function readPtr(addr)
-    if not addr or addr <= 4096 then return nil end
-    local ok, v = pcall(memory_read, "uintptr_t", addr)
-    return (ok and v and v > 4096) and v or nil
-end
-
-local function getClass(addr)
-    if not addr or addr <= 4096 then return nil end
-    local desc = readPtr(addr + INST.ClassDescriptor)
-    if not desc then return nil end
-    local namePtr = readPtr(desc + INST.ClassName)
-    return namePtr and readStr(namePtr) or nil
-end
-
-local function getAnimator(char)
-    if not char or char.Address == 0 then return nil end
-    local hum  = char:FindFirstChild("Humanoid")
-    if not hum then return nil end
-    local anim = hum:FindFirstChild("Animator")
-    return anim and tonumber(anim.Address) or nil
-end
-
-local function checkAnim(track, mode)
-    local anim = readPtr(track + ANIM.Animation)
-    if not anim or getClass(anim) ~= "Animation" then return nil end
-    local idPtr = readPtr(anim + ANIM.AnimationId)
-    local idStr = readStr(idPtr)
-    if not idStr or idStr == "N/A" then return nil end
-    for id in pairs(mode) do
-        if string.find(idStr, id, 1, true) then return id end
-    end
-    return nil
-end
-
-local function getCurrentAnimFromChar(char, mode)
-    local animator = getAnimator(char)
-    if not animator then return nil end
-    local head = readPtr(animator + ANIM.ActiveAnimations)
-    if not head then return nil end
-    local first = readPtr(head)
-    if not first or first == head then return nil end
-    local curr = first
-    local maxIter, iter = 64, 0
-    while curr and curr ~= 0 and curr ~= head and iter < maxIter do
-        iter = iter + 1
-        local track = readPtr(curr + ANIM.NodeNext)
-        if track and getClass(track) == "AnimationTrack" then
-            local id = checkAnim(track, mode)
-            if id then return id end
-        end
-        curr = readPtr(curr)
-    end
-    return nil
-end
-
--- ════════════════════════════════════════════════════════════════
---  SOUND READING
---  Sound.SoundId at offset 224 → string pointer → readStr
--- ════════════════════════════════════════════════════════════════
-
-local function readSoundIdFromAddr(addr)
-    if not addr or addr <= 4096 then return nil end
-    local strPtr = readPtr(addr + SOUNDID_OFFSET)
-    if not strPtr then return nil end
-    local s = readStr(strPtr)
-    if not s then return nil end
-    return s:match("%d+")
-end
-
-local function getActiveSoundsFromChar(char)
-    local hrp = char:FindFirstChild("HumanoidRootPart")
-    if not hrp then return {} end
-    local sounds = {}
-    for _, obj in ipairs(hrp:GetChildren()) do
-        if obj.ClassName == "Sound" then
-            local addr = tonumber(obj.Address)
-            if addr and addr > 4096 then
-                local id = readSoundIdFromAddr(addr)
-                if id then sounds[id] = true end
+local function findNpc(name)
+    local function searchIn(folder)
+        if not folder then return nil end
+        for _, obj in ipairs(folder:GetChildren()) do
+            local ok, dn = pcall(function() return obj:GetAttribute("DisplayName") end)
+            if (ok and dn == name) or obj.Name == name then 
+                return obj:FindFirstChild("HumanoidRootPart") or obj.PrimaryPart 
             end
-        end
-    end
-    return sounds
-end
-
-local function checkSoundBlock(char)
-    local sounds = getActiveSoundsFromChar(char)
-    for id in pairs(sounds) do
-        if NormalHitSounds[id] or SpecialHitSounds[id] then return true end
-    end
-    return false
-end
-
-local function checkSoundDash(char)
-    local sounds = getActiveSoundsFromChar(char)
-    for id in pairs(sounds) do
-        if DashSounds[id] then return true end
-    end
-    return false
-end
-
-local function checkSoundSkill(char)
-    local sounds = getActiveSoundsFromChar(char)
-    for id in pairs(sounds) do
-        if SkillBlockSounds[id] then return true end
-    end
-    return false
-end
-
--- ════════════════════════════════════════════════════════════════
---  QTE / AUTOMATION
--- ════════════════════════════════════════════════════════════════
-
-local function GetQTELabel() return SafeFind(LocalPlayer, "PlayerGui", "QTE", "QTE_PC") end
-
-local function ProcessQTE()
-    if not CONFIG.autoQTE.enabled or iskeypressed(KEYS.F) then return false end
-    local label = GetQTELabel()
-    if not label or not label.Text or label.Text == "" then return false end
-    local keyCode = VALID_QTE_KEYS[label.Text:upper()]
-    if not keyCode then return false end
-    QTEState.detectedKey  = label.Text:upper()
-    QTEState.detectedTime = GetTime()
-    keypress(keyCode); keyrelease(keyCode)
-    return true
-end
-
-local function HasSalarymanMoveset() return HasMoveset("Salaryman") or HasMoveset("Nanami") end
-
-local function FindOurRatioQTE()
-    local characters = workspace:FindFirstChild("Characters")
-    if not characters then return nil, nil end
-    for _, character in ipairs(characters:GetChildren()) do
-        local ratio = SafeFind(character, "Info", "Ratio")
-        if ratio then
-            local owner = ratio:FindFirstChild("Owner")
-            if owner and owner.Value then
-                local ok, ownerName = pcall(function() return owner.Value.Name end)
-                if ok and ownerName == LocalPlayer.Name then return character, ratio end
-            end
-        end
-    end
-    return nil, nil
-end
-
-local function GetTargetHealthPercent(target)
-    if not target then return 1.0 end
-    local humanoid = target:FindFirstChild("Humanoid")
-    if humanoid then
-        local addr = tonumber(humanoid.Address)
-        if addr and addr > 4096 then
-            local okH, health    = pcall(memory_read, "float", addr + HUM.Health)
-            local okM, maxHealth = pcall(memory_read, "float", addr + HUM.MaxHealth)
-            if okH and okM and maxHealth and maxHealth > 0 then
-                return math.clamp(health / maxHealth, 0, 1)
-            end
-        end
-        if humanoid.MaxHealth and humanoid.MaxHealth > 0 then
-            return humanoid.Health / humanoid.MaxHealth
-        end
-    end
-    return 1.0
-end
-
-local function CalculatePressDelay(healthPercent)
-    local cfg        = CONFIG.ratioQTE
-    local effective  = math.max(healthPercent, cfg.healthFloor)
-    local normalized = math.clamp((effective - cfg.healthFloor) / (1.0 - cfg.healthFloor), 0, 1)
-    return cfg.minDelay + (cfg.baseDelay - cfg.minDelay) * normalized
-end
-
-local function ProcessRatioQTE()
-    if not CONFIG.ratioQTE.enabled or not HasSalarymanMoveset() then return end
-    local currentTime = GetTime()
-    local rPressed    = iskeypressed(KEYS.R)
-    if rPressed and not RatioState.rWasPressed then
-        RatioState.isScanning        = true
-        RatioState.scanStartTime     = currentTime
-        RatioState.trackedTarget     = nil
-        RatioState.trackedRatioValue = nil
-        RatioState.hasTriggered      = false
-    end
-    RatioState.rWasPressed = rPressed
-    if not RatioState.isScanning and not RatioState.trackedRatioValue then return end
-    if RatioState.isScanning then
-        if currentTime - RatioState.scanStartTime > 2.0 then RatioState.isScanning = false return end
-        local target, ratioValue = FindOurRatioQTE()
-        if target and ratioValue then
-            RatioState.isScanning          = false
-            RatioState.trackedTarget       = target
-            RatioState.trackedRatioValue   = ratioValue
-            RatioState.qteDetectedTime     = currentTime
-            RatioState.hasTriggered        = false
-            RatioState.targetHealthPercent = GetTargetHealthPercent(target)
-            RatioState.calculatedDelay     = CalculatePressDelay(RatioState.targetHealthPercent)
-        end
-        return
-    end
-    if RatioState.trackedRatioValue then
-        if not RatioState.trackedRatioValue.Parent or RatioState.trackedRatioValue:GetAttribute("Activated") == false then
-            RatioState.trackedTarget     = nil
-            RatioState.trackedRatioValue = nil
-            RatioState.hasTriggered      = false
-            return
-        end
-        if RatioState.hasTriggered or currentTime - RatioState.lastTriggerTime < RatioState.triggerCooldown then return end
-        if currentTime - RatioState.qteDetectedTime >= RatioState.calculatedDelay then
-            keypress(KEYS.R); keyrelease(KEYS.R)
-            RatioState.hasTriggered    = true
-            RatioState.lastTriggerTime = currentTime
-        end
-    end
-end
-
-local function HasPerfectSwapMoveset()
-    local attr = GetMovesetAttr()
-    if attr == "Switcher" or attr == "Todo" then return true end
-    return HasMovesetMoves(PERFECT_SWAP_MOVES) or HasMovesetMoves(ULT_SWAP_MOVES)
-end
-
-local function HasClapTarget()
-    local info = SafeFind(GetWorkspaceCharacter(), "Info")
-    return info and info:FindFirstChild("ClapTarget") ~= nil
-end
-
-local function HasNoM1Flag()
-    local char = GetWorkspaceCharacter()
-    return char and char:FindFirstChild("NoM1") ~= nil
-end
-
-local function ResetSwapState()
-    SwapState.isScanning      = false
-    SwapState.swapConfirmed   = false
-    SwapState.effectsSnapshot = {}
-    SwapState.hasTriggeredM1  = false
-end
-
-local function ProcessPerfectSwap()
-    if not CONFIG.perfectSwap.enabled or not HasPerfectSwapMoveset() then return end
-    local currentTime = GetTime()
-    local rPressed    = iskeypressed(KEYS.R)
-    if rPressed and not SwapState.rWasPressed then
-        SwapState.isScanning      = true
-        SwapState.scanStartTime   = currentTime
-        SwapState.swapConfirmed   = false
-        SwapState.hasTriggeredM1  = false
-        SwapState.effectsSnapshot = {}
-    end
-    SwapState.rWasPressed = rPressed
-    if not SwapState.isScanning then return end
-    if currentTime - SwapState.scanStartTime > CONFIG.perfectSwap.scanTimeout then ResetSwapState() return end
-    if not SwapState.swapConfirmed then
-        if HasClapTarget() then
-            SwapState.swapConfirmed = true
-            local ef = workspace:FindFirstChild("Effects")
-            if ef then
-                for _, desc in ipairs(ef:GetDescendants()) do
-                    SwapState.effectsSnapshot[desc.Address] = true
-                end
-            end
-        end
-        return
-    end
-    local ef = workspace:FindFirstChild("Effects")
-    if ef then
-        for _, desc in ipairs(ef:GetDescendants()) do
-            if not SwapState.effectsSnapshot[desc.Address] then
-                if desc.ClassName == "MeshPart" and desc.Name == "Clap" then
-                    if not SwapState.hasTriggeredM1 and not HasNoM1Flag() then
-                        mouse1press(); mouse1release()
-                        SwapState.hasTriggeredM1 = true
-                    end
-                    ResetSwapState(); return
-                end
-                SwapState.effectsSnapshot[desc.Address] = true
-            end
-        end
-    end
-end
-
-local function RunCharaQTE()
-    if not CONFIG.charaQTE.enabled then CharaQTEState.active = false return end
-    local uiComponent = SafeFind(LocalPlayer, "PlayerGui", "UI")
-    if not uiComponent then CharaQTEState.active = false return end
-    local bar  = uiComponent:FindFirstChild("Bar")
-    if not bar then return end
-    local line = bar:FindFirstChild("Line")
-    if not line then return end
-    CharaQTEState.active = true
-    local barX    = bar.AbsolutePosition.X
-    local barW    = bar.AbsoluteSize.X
-    local centerX = barX + barW / 2
-    local prevDist = math.huge
-    while uiComponent.Parent and bar.Parent and line.Parent do
-        local lineCenterX = line.AbsolutePosition.X + line.AbsoluteSize.X / 2
-        local dist = math.abs(lineCenterX - centerX)
-        if dist > prevDist then mouse1click() break end
-        prevDist = dist
-        task.wait()
-    end
-    CharaQTEState.active = false
-end
-
--- ════════════════════════════════════════════════════════════════
---  ESP
--- ════════════════════════════════════════════════════════════════
-
-local function CreateESPDrawing(name, color)
-    local drawing        = Drawing.new("Text")
-    drawing.Font         = Drawing.Fonts.System
-    drawing.Text         = name
-    drawing.Color        = Color3.fromRGB(color[1], color[2], color[3])
-    drawing.Outline      = true
-    drawing.Center       = true
-    drawing.Visible      = false
-    return drawing
-end
-
-local function RemoveESPDrawing(espObj)
-    if espObj and espObj.drawing then espObj.drawing:Remove() end
-end
-
-local function ClearAllESP()
-    for _, espObj in pairs(ESPState.objects) do RemoveESPDrawing(espObj) end
-    ESPState.objects = {}
-end
-
-local function UpdateESPPositions()
-    if not CONFIG.esp.enabled then
-        for _, espObj in pairs(ESPState.objects) do
-            if espObj.drawing then espObj.drawing.Visible = false end
-        end
-        return
-    end
-    for _, espObj in pairs(ESPState.objects) do
-        if espObj.drawing then
-            local isEnabled = (espObj.type == "dummy" and CONFIG.esp.dummy)
-                           or (espObj.type == "item"  and CONFIG.esp.items)
-            if not isEnabled then
-                espObj.drawing.Visible = false
-            elseif espObj.part and espObj.part.Parent then
-                local screenPos, onScreen = WorldToScreen(espObj.part.Position)
-                espObj.drawing.Visible = onScreen
-                if onScreen then
-                    espObj.drawing.Position = screenPos
-                    local color = espObj.type == "dummy" and CONFIG.esp.colorDummy or CONFIG.esp.colorItems
-                    espObj.drawing.Color = Color3.fromRGB(color[1], color[2], color[3])
-                end
-            else
-                espObj.drawing.Visible = false
-            end
-        end
-    end
-end
-
-local function DiscoverDummy()
-    local dummyKey = "dummy_character"
-    if ESPState.objects[dummyKey] then
-        local espObj = ESPState.objects[dummyKey]
-        if not espObj.part or not espObj.part.Parent then
-            RemoveESPDrawing(espObj); ESPState.objects[dummyKey] = nil
-        else return end
-    end
-    local dummy = SafeFind(workspace, "Characters", "Dummy")
-    if not dummy then return end
-    local hrp = dummy:FindFirstChild("HumanoidRootPart")
-    if not hrp then return end
-    ESPState.objects[dummyKey] = {
-        drawing  = CreateESPDrawing("Dummy", CONFIG.esp.colorDummy),
-        instance = dummy, part = hrp, type = "dummy"
-    }
-end
-
-local function DiscoverItems()
-    local itemsFolder = SafeFind(workspace, "Items")
-    if not itemsFolder then return end
-    local seenAddresses = {}
-    for _, item in ipairs(itemsFolder:GetChildren()) do
-        if item:IsA("Part") or item:IsA("MeshPart") then
-            local address = item.Address
-            seenAddresses[address] = true
-            if not ESPState.objects[address] then
-                ESPState.objects[address] = {
-                    drawing  = CreateESPDrawing(item.Name, CONFIG.esp.colorItems),
-                    instance = item, part = item, type = "item"
-                }
-            end
-        end
-    end
-    for address, espObj in pairs(ESPState.objects) do
-        if espObj.type == "item" and not seenAddresses[address] then
-            RemoveESPDrawing(espObj); ESPState.objects[address] = nil
-        end
-    end
-end
-
-local function DiscoverESPObjects() pcall(DiscoverDummy) pcall(DiscoverItems) end
-
--- ════════════════════════════════════════════════════════════════
---  DOMAIN HEALTH ESP
--- ════════════════════════════════════════════════════════════════
-
-local function CreateDomainHealthDrawing()
-    local d = Drawing.new("Text")
-    d.Font    = Drawing.Fonts.System
-    d.Size    = 16
-    d.Color   = Color3.fromRGB(255, 255, 255)
-    d.Outline = true
-    d.Center  = true
-    d.Visible = false
-    return d
-end
-
-local function UpdateDomainHealthESP()
-    if not CONFIG.domainHealthESP.enabled then
-        for _, entry in pairs(DomainHealthESPState.drawings) do
-            if entry.drawing then entry.drawing.Visible = false end
-        end
-        return
-    end
-    local domainsFolder = workspace:FindFirstChild("Domains")
-    local playerPos     = GetPlayerPosition()
-    local nearbyThresh  = CONFIG.domainHealthESP.nearbyThreshold
-
-    -- Read viewport via Camera.ViewportSize (offset 744, two sequential floats)
-    local screenCenterX = 960
-    local cam = workspace.CurrentCamera
-    if cam then
-        local camAddr = tonumber(cam.Address)
-        if camAddr and camAddr > 4096 then
-            local okX, vx = pcall(memory_read, "float", camAddr + CAM.ViewportSize)
-            if okX and vx and vx > 0 then screenCenterX = vx / 2 end
-        elseif cam.ViewportSize then
-            screenCenterX = cam.ViewportSize.X / 2
-        end
-    end
-
-    local seenAddresses = {}
-    if domainsFolder then
-        for _, domain in ipairs(domainsFolder:GetChildren()) do
-            local domainMesh = (domain.Name == "Domain" and domain:IsA("MeshPart")) and domain
-                            or domain:FindFirstChild("Domain")
-            if domainMesh then
-                local addr  = domainMesh.Address
-                seenAddresses[addr] = true
-                local entry = DomainHealthESPState.drawings[addr]
-                if not entry then
-                    entry = { drawing = CreateDomainHealthDrawing() }
-                    DomainHealthESPState.drawings[addr] = entry
-                end
-                local health = domainMesh:GetAttribute("Health") or domainMesh:GetAttribute("DomainHealth") or 0
-                entry.drawing.Text = "Domain HP: " .. math.floor(health)
-                local dist = playerPos and CalculateDistance(playerPos, domainMesh.Position) or math.huge
-                if dist <= nearbyThresh then
-                    entry.drawing.Position = Vector2.new(screenCenterX, 50)
-                    entry.drawing.Visible  = true
-                else
-                    local screenPos, onScreen = WorldToScreen(domainMesh.Position)
-                    entry.drawing.Visible = onScreen
-                    if onScreen then entry.drawing.Position = screenPos end
-                end
-            end
-        end
-    end
-    for addr, entry in pairs(DomainHealthESPState.drawings) do
-        if not seenAddresses[addr] then
-            entry.drawing:Remove()
-            DomainHealthESPState.drawings[addr] = nil
-        end
-    end
-end
-
--- ════════════════════════════════════════════════════════════════
---  DOMAIN VOTES (Hiromi)
--- ════════════════════════════════════════════════════════════════
-
-local function HasHiromiMoveset() return HasMoveset("Hiromi") end
-local function HasChooseUI() return SafeFind(LocalPlayer, "PlayerGui", "Choose") ~= nil end
-
-local function FindPlayerDomain()
-    local domainsFolder = workspace:FindFirstChild("Domains")
-    if not domainsFolder then return nil end
-    local playerPos = GetPlayerPosition()
-    if not playerPos then return nil end
-    local closestDomain, closestDist = nil, math.huge
-    for _, domain in ipairs(domainsFolder:GetChildren()) do
-        local domainMesh = (domain.Name == "Domain" and domain:IsA("MeshPart")) and domain
-                        or domain:FindFirstChild("Domain")
-        if domainMesh then
-            local checkPart = domainMesh:FindFirstChild("DomainCollider") or domainMesh
-            if checkPart and checkPart:IsA("BasePart") then
-                local dist = CalculateDistance(playerPos, checkPart.Position)
-                if dist < closestDist then closestDist = dist closestDomain = domainMesh end
-            end
-        end
-    end
-    return closestDomain
-end
-
-local function GetDomainVotes(domain)
-    if not domain then return 0, 0, 0 end
-    return domain:GetAttribute("ConfessCount") or 0,
-           domain:GetAttribute("SilenceCount") or 0,
-           domain:GetAttribute("DenialCount")  or 0
-end
-
-local function CreateVoteDrawings()
-    local function make()
-        local d = Drawing.new("Text")
-        d.Font = Drawing.Fonts.System; d.Text = "0"; d.Size = 24
-        d.Color = Color3.fromRGB(255, 0, 0); d.Outline = true
-        d.Center = true; d.Visible = false
-        return d
-    end
-    DomainState.confessDrawing = DomainState.confessDrawing or make()
-    DomainState.silenceDrawing = DomainState.silenceDrawing or make()
-    DomainState.denialDrawing  = DomainState.denialDrawing  or make()
-end
-
-local function HideVoteDrawings()
-    if DomainState.confessDrawing then DomainState.confessDrawing.Visible = false end
-    if DomainState.silenceDrawing then DomainState.silenceDrawing.Visible = false end
-    if DomainState.denialDrawing  then DomainState.denialDrawing.Visible  = false end
-end
-
-local function UpdateVoteDisplay(confess, silence, denial)
-    if not DomainState.confessDrawing then return end
-    local maxVote  = math.max(confess, silence, denial)
-    local tieCount = (confess == maxVote and 1 or 0)
-                   + (silence == maxVote and 1 or 0)
-                   + (denial  == maxVote and 1 or 0)
-    local red    = Color3.fromRGB(255, 50, 50)
-    local green  = Color3.fromRGB(50, 255, 50)
-    local yellow = Color3.fromRGB(255, 255, 50)
-    local function getColor(count)
-        if maxVote == 0 then return red end
-        if count ~= maxVote then return red end
-        return tieCount >= 2 and yellow or green
-    end
-    DomainState.confessDrawing.Text  = tostring(confess)
-    DomainState.confessDrawing.Color = getColor(confess)
-    DomainState.silenceDrawing.Text  = tostring(silence)
-    DomainState.silenceDrawing.Color = getColor(silence)
-    DomainState.denialDrawing.Text   = tostring(denial)
-    DomainState.denialDrawing.Color  = getColor(denial)
-end
-
-local function GetChooseButtonPositions()
-    local chooseUI = SafeFind(LocalPlayer, "PlayerGui", "Choose")
-    if not chooseUI then return nil, nil, nil end
-    local function getPos(name)
-        local btn = chooseUI:FindFirstChild(name)
-        if btn then
-            local pos  = btn.AbsolutePosition
-            local size = btn.AbsoluteSize
-            return Vector2.new(pos.X + size.X / 2, pos.Y - 30)
         end
         return nil
     end
-    return getPos("Confess"), getPos("Silence"), getPos("Denial")
+
+    return searchIn(game.Workspace:FindFirstChild("Npcs"))
+        or searchIn(game.ReplicatedStorage:FindFirstChild("assets") and game.ReplicatedStorage.assets:FindFirstChild("npc_cache"))
 end
 
-local function PositionVoteDrawings()
-    if not DomainState.confessDrawing then return end
-    local cPos, sPos, dPos = GetChooseButtonPositions()
-    DomainState.confessDrawing.Visible = cPos ~= nil
-    if cPos then DomainState.confessDrawing.Position = cPos end
-    DomainState.silenceDrawing.Visible = sPos ~= nil
-    if sPos then DomainState.silenceDrawing.Position = sPos end
-    DomainState.denialDrawing.Visible  = dPos ~= nil
-    if dPos then DomainState.denialDrawing.Position  = dPos end
-end
-
-local function ResetDomainState()
-    DomainState.isActive           = false
-    DomainState.trackedDomain      = nil
-    DomainState.waitingForChooseUI = false
-    DomainState.waitStartTime      = 0
-    DomainState.confessCount       = 0
-    DomainState.silenceCount       = 0
-    DomainState.denialCount        = 0
-    HideVoteDrawings()
-end
-
-local function ProcessDomainVotes()
-    if not CONFIG.domainVotes.enabled then
-        if DomainState.isActive then ResetDomainState() end
-        return
-    end
-    if not HasHiromiMoveset() then
-        if DomainState.isActive or DomainState.waitingForChooseUI then ResetDomainState() end
-        return
-    end
-    local currentTime = GetTime()
-    local gPressed    = iskeypressed(KEYS.G)
-    if gPressed and not DomainState.gWasPressed and not DomainState.isActive and not DomainState.waitingForChooseUI then
-        DomainState.waitingForChooseUI = true
-        DomainState.waitStartTime      = currentTime
-    end
-    DomainState.gWasPressed = gPressed
-    if DomainState.waitingForChooseUI then
-        if currentTime - DomainState.waitStartTime > 6.0 then
-            DomainState.waitingForChooseUI = false
-            return
-        end
-        if HasChooseUI() then
-            DomainState.waitingForChooseUI = false
-            local domain = FindPlayerDomain()
-            if domain then
-                DomainState.isActive      = true
-                DomainState.trackedDomain = domain
-                CreateVoteDrawings()
-                PositionVoteDrawings()
-                UpdateVoteDisplay(0, 0, 0)
-            end
-        end
-        return
-    end
-    if DomainState.isActive then
-        if not HasChooseUI() or not DomainState.trackedDomain or not DomainState.trackedDomain.Parent then
-            ResetDomainState()
-            return
-        end
-        local confess, silence, denial = GetDomainVotes(DomainState.trackedDomain)
-        if confess ~= DomainState.confessCount or silence ~= DomainState.silenceCount or denial ~= DomainState.denialCount then
-            DomainState.confessCount = confess
-            DomainState.silenceCount = silence
-            DomainState.denialCount  = denial
-            UpdateVoteDisplay(confess, silence, denial)
-        end
-        PositionVoteDrawings()
-    end
-end
-
--- ════════════════════════════════════════════════════════════════
---  COUNTER / AWAKENING HELPERS
--- ════════════════════════════════════════════════════════════════
-
-local function isUltimateReady()
-    local gui = LocalPlayer and LocalPlayer:FindFirstChild("PlayerGui")
-    if not gui then return false end
-    local readyFrame = SafeFind(gui, "Main", "Ultimate", "Bar", "Ready")
-    if not readyFrame then return false end
-    local addr = tonumber(readyFrame.Address)
-    if not addr or addr <= 4096 then return false end
-    -- GuiObject.Visible is a byte at offset 1461 (dump)
-    local ok, byte = pcall(memory_read, "byte", addr + VISIBLE_OFFSET)
-    return ok and byte ~= 0
-end
-
-local function checkForLuckyCoward()
-    local gui     = LocalPlayer:FindFirstChild("PlayerGui")
-    local moveset = gui and SafeFind(gui, "Main", "Moveset")
-    return moveset and moveset:FindFirstChild("Dirty Play") ~= nil
-end
-
-local function checkEquippedAbilities()
-    local gui     = LocalPlayer:FindFirstChild("PlayerGui")
-    local moveset = gui and SafeFind(gui, "Main", "Moveset")
-    if not moveset then return end
-
-    headOfHeiEquipped = moveset:FindFirstChild("Projection Breaker") ~= nil
-    charlesEquipped   = moveset:FindFirstChild("Eye Catching") ~= nil
-
-    if headOfHeiEquipped then
-        if _G.AwakeningCounter_Enabled and not headOfHeiEquippedNotified then
-            Win:Notify("Equipment", "Head of Hei equipped - Awakening ready", 2)
-            headOfHeiEquippedNotified = true
-        end
-    else
-        headOfHeiEquippedNotified = false
-    end
-
-    if charlesEquipped then
-        if _G.AutoCounter_Enabled and not charlesEquippedNotified then
-            Win:Notify("Counter", "Charles Counter Ready", 2)
-            charlesEquippedNotified = true
-        end
-    else
-        charlesEquippedNotified = false
-    end
-
-    local hasLucky = checkForLuckyCoward()
-    if hasLucky ~= luckyCowardEquipped then
-        luckyCowardEquipped = hasLucky
-        if _G.AutoCounter_Enabled and luckyCowardEquipped and not luckyCowardEquippedNotified then
-            Win:Notify("Counter", "Lucky Coward Counter Available", 3)
-            luckyCowardEquippedNotified = true
-        elseif not luckyCowardEquipped then
-            luckyCowardEquippedNotified = false
-        end
-    end
-end
-
-local function monitorCharlesCooldown()
-    local gui     = LocalPlayer:FindFirstChild("PlayerGui")
-    local moveset = gui and SafeFind(gui, "Main", "Moveset")
-    if not moveset then return true end
-    local eyeFrame = moveset:FindFirstChild("Eye Catching")
-    if not eyeFrame then return true end
-    local cooldown = eyeFrame:FindFirstChild("Cooldown")
-    if not cooldown then return true end
-
-    charlesCooldownAddr = tonumber(cooldown.Address)
-    if not charlesCooldownAddr or charlesCooldownAddr <= 4096 then return true end
-
-    -- ValueBase.Value (float) at offset 208 (Misc.Value from dump)
-    local ok, secondsLeft = pcall(memory_read, "float", charlesCooldownAddr + VALUE_OFFSET)
-    if not ok or secondsLeft ~= secondsLeft then return true end  -- NaN guard
-
-    local isOnCD = secondsLeft > 0.1
-    if isOnCD ~= charlesLastState then
-        if isOnCD then
-            Win:Notify("Charles", "Eye Catching on cooldown - " .. math.floor(secondsLeft) .. "s", 2)
-        else
-            Win:Notify("Charles", "Eye Catching ready", 2)
-        end
-        charlesLastState = isOnCD
-    end
-    charlesOnCooldown = isOnCD
-    return not isOnCD
-end
-
--- ════════════════════════════════════════════════════════════════
---  UI  (GalaxLib)
--- ════════════════════════════════════════════════════════════════
-
-local DefenseTab = Win:AddTab("Defense")
-local DefSec     = DefenseTab:AddSection("Auto Defense")
-
-DefSec:AddToggle("Auto Block",       false, function(v) _G.AutoBlock_Enabled        = v end)
-DefSec:AddToggle("Auto Block Dash",  false, function(v) _G.AutoBlockDash_Enabled    = v end)
-DefSec:AddToggle("Auto Skill Block", false, function(v) _G.AutoSkillBlock_Enabled   = v end)
-DefSec:AddToggle("Auto Counter",     false, function(v)
-    _G.AutoCounter_Enabled = v
-    if v then task.spawn(function() task.wait(0.5) checkEquippedAbilities() end) end
-end)
-DefSec:AddToggle("Awakening Counter", false, function(v)
-    _G.AwakeningCounter_Enabled = v
-    if v then task.spawn(function() task.wait(0.5) checkEquippedAbilities() end) end
-end)
-
-local AutoTab   = Win:AddTab("Automation")
-local QTESec    = AutoTab:AddSection("Defense Attorney")
-local RatioSec  = AutoTab:AddSection("Nanami")
-local SwapSec   = AutoTab:AddSection("Todo")
-local CharaSec  = AutoTab:AddSection("Chara")
-local DomainSec = AutoTab:AddSection("Hiromi")
-
-QTESec:AddToggle("Auto QTE", false, function(v) CONFIG.autoQTE.enabled = v end)
-RatioSec:AddToggle("Auto Ratio QTE", false, function(v)
-    CONFIG.ratioQTE.enabled = v
-    if not v then
-        RatioState.trackedTarget     = nil
-        RatioState.trackedRatioValue = nil
-        RatioState.isScanning        = false
-        RatioState.hasTriggered      = false
-    end
-end)
-SwapSec:AddToggle("Auto Perfect Swap", false, function(v)
-    CONFIG.perfectSwap.enabled = v
-    if not v then ResetSwapState() end
-end)
-CharaSec:AddToggle("Auto Chara QTE", false, function(v)
-    CONFIG.charaQTE.enabled = v
-    if not v then CharaQTEState.active = false end
-end)
-DomainSec:AddToggle("Vote Tracker", false, function(v)
-    CONFIG.domainVotes.enabled = v
-    if not v then ResetDomainState() end
-end)
-
-local ESPTab      = Win:AddTab("ESP")
-local ESPSec      = ESPTab:AddSection("ESP Settings")
-local DomainHPSec = ESPTab:AddSection("Domain Health")
-
-ESPSec:AddToggle("Enable ESP",  false, function(v)
-    CONFIG.esp.enabled = v
-    if not v then for _, obj in pairs(ESPState.objects) do if obj.drawing then obj.drawing.Visible = false end end end
-end)
-ESPSec:AddToggle("Dummy ESP",  true,  function(v) CONFIG.esp.dummy  = v end)
-ESPSec:AddToggle("Items ESP",  true,  function(v) CONFIG.esp.items  = v end)
-DomainHPSec:AddToggle("Domain Health ESP", false, function(v)
-    CONFIG.domainHealthESP.enabled = v
-    if not v then
-        for _, entry in pairs(DomainHealthESPState.drawings) do
-            if entry.drawing then entry.drawing.Visible = false end
-        end
-    end
-end)
-
-Win:Notify("Jujutsu Hub", "Loaded!", 3)
-
--- ════════════════════════════════════════════════════════════════
---  MAIN DEFENSE LOOP
--- ════════════════════════════════════════════════════════════════
-
-local blockTriggered = false
-local dashTriggered  = false
-local skillTriggered = false
-local blockStart     = 0
-local dashStart      = 0
-local skillStart     = 0
-
-task.spawn(function()
-    while true do
-        task.wait()
-        checkEquippedAbilities()
-
-        local charlesReady = true
-        if _G.AutoCounter_Enabled and charlesEquipped then
-            charlesReady = monitorCharlesCooldown()
-        end
-
-        local myChar = LocalPlayer and LocalPlayer.Character
-        if not myChar then
-            if blockTriggered then keyrelease(KEY_F); blockTriggered = false end
-            if dashTriggered  then keyrelease(KEY_F); dashTriggered  = false end
-            if skillTriggered then keyrelease(KEY_F); skillTriggered = false end
-            continue
-        end
-
-        local myRoot = myChar:FindFirstChild("HumanoidRootPart")
-                    or myChar:FindFirstChild("Torso")
-                    or myChar:FindFirstChild("UpperTorso")
-        if not myRoot then continue end
-
-        local blockAnimPlayer, dashAnimPlayer, skillAnimPlayer = nil, nil, nil
-        local blockAnimId,     dashAnimId,     skillAnimId     = nil, nil, nil
-        local anyAnimPlayer,   anyAnimId       = nil, nil
-
-        for _, p in ipairs(Players:GetPlayers()) do
-            if not p or isLocalPlayer(p) or not p.Character then continue end
-            local theirRoot = p.Character:FindFirstChild("HumanoidRootPart")
-                           or p.Character:FindFirstChild("Torso")
-                           or p.Character:FindFirstChild("UpperTorso")
-            if not theirRoot then continue end
-            local dist = getMagnitude(theirRoot.Position, myRoot.Position)
-
-            -- Block range
-            if dist <= BLOCK_RANGE then
-                local id = getCurrentAnimFromChar(p.Character, BlockMode)
-                if id then
-                    blockAnimPlayer = p; blockAnimId = id
-                    anyAnimPlayer   = p; anyAnimId   = id
-                end
-            end
-
-            -- Dash range
-            if dist <= DASH_RANGE then
-                local id = getCurrentAnimFromChar(p.Character, DashMode)
-                if id then
-                    dashAnimPlayer = p; dashAnimId = id
-                    anyAnimPlayer  = p; anyAnimId  = id
-                end
-            end
-
-            -- Skill range
-            if dist <= SKILL_RANGE then
-                local id = getCurrentAnimFromChar(p.Character, SkillBlockMode)
-                if id then
-                    skillAnimPlayer = p; skillAnimId = id
-                    anyAnimPlayer   = p; anyAnimId   = id
+local function getNearestSelectedObject()
+    local hrp = getHrp()
+    if not hrp then return nil end
+    local nearestObj, minDistSq = nil, math.huge
+    for _, model in ipairs(workspace:GetChildren()) do
+        if model.Name == "Model" then
+            for _, obj in ipairs(model:GetChildren()) do
+                if selectedItems[obj.Name] then
+                    local dx = hrp.Position.X-obj.Position.X
+                    local dy = hrp.Position.Y-obj.Position.Y
+                    local dz = hrp.Position.Z-obj.Position.Z
+                    local dSq = dx*dx+dy*dy+dz*dz
+                    if dSq < minDistSq then minDistSq=dSq; nearestObj=obj end
                 end
             end
         end
-
-        -- ── AUTO COUNTER (highest priority) ──────────────────────
-        if _G.AutoCounter_Enabled and anyAnimPlayer and anyAnimId then
-            if luckyCowardEquipped then
-                mouse1click()
-                if blockTriggered then keyrelease(KEY_F); blockTriggered = false end
-                if dashTriggered  then keyrelease(KEY_F); dashTriggered  = false end
-                if skillTriggered then keyrelease(KEY_F); skillTriggered = false end
-                continue
-            elseif charlesEquipped and charlesReady then
-                keypress(KEY_3); keyrelease(KEY_3)
-                if blockTriggered then keyrelease(KEY_F); blockTriggered = false end
-                if dashTriggered  then keyrelease(KEY_F); dashTriggered  = false end
-                if skillTriggered then keyrelease(KEY_F); skillTriggered = false end
-                continue
-            end
-        end
-
-        -- ── AUTO SKILL BLOCK ─────────────────────────────────────
-        if _G.AutoSkillBlock_Enabled and skillAnimPlayer and skillAnimId then
-            if not skillTriggered then
-                skillTriggered = true
-                skillStart     = tick()
-                keypress(KEY_F)
-            end
-            if skillTriggered and tick() - skillStart >= BLOCK_HOLD_TIME then
-                keyrelease(KEY_F)
-                mouse1click()
-                skillTriggered = false
-            end
-            continue
-        end
-
-        -- ── AUTO BLOCK DASH ──────────────────────────────────────
-        if _G.AutoBlockDash_Enabled and dashAnimPlayer and dashAnimId then
-            if not dashTriggered then
-                dashTriggered = true
-                dashStart     = tick()
-                keypress(KEY_F)
-            end
-            if dashTriggered and tick() - dashStart >= BLOCK_HOLD_TIME then
-                keyrelease(KEY_F)
-                mouse1click()
-                dashTriggered = false
-            end
-            continue
-        end
-
-        -- ── AUTO BLOCK ───────────────────────────────────────────
-        if _G.AutoBlock_Enabled and blockAnimPlayer and blockAnimId then
-            if not blockTriggered then
-                blockTriggered = true
-                blockStart     = tick()
-                keypress(KEY_F)
-            end
-            if blockTriggered and tick() - blockStart >= BLOCK_HOLD_TIME then
-                keyrelease(KEY_F)
-                mouse1click()
-                blockTriggered = false
-            end
-            continue
-        end
-
-        -- Release if nothing detected
-        if blockTriggered then keyrelease(KEY_F); blockTriggered = false end
-        if dashTriggered  then keyrelease(KEY_F); dashTriggered  = false end
-        if skillTriggered then keyrelease(KEY_F); skillTriggered = false end
     end
-end)
+    return nearestObj
+end
+
+local function findMeditateClone()
+    local lp   = game.Players.LocalPlayer
+    local live = game.Workspace:FindFirstChild("Live")
+    if not live then return nil end
+    local nameLower = lp.Name:lower()
+    for _, obj in ipairs(live:GetChildren()) do
+        local objLower = obj.Name:lower()
+        if objLower:find(nameLower,1,true) and objLower:find("entity clone",1,true) then return obj end
+    end
+    return nil
+end
+
+local function resolveWorldPosition(instance)
+    if not instance then return nil end
+    if instance:IsA("BasePart") then return instance.Position end
+    if instance:IsA("Model") and instance.PrimaryPart then return instance.PrimaryPart.Position end
+    local p = instance:FindFirstChildWhichIsA("BasePart")
+    if p then return p.Position end
+    for _, d in ipairs(instance:GetDescendants()) do
+        if d:IsA("BasePart") then return d.Position end
+    end
+    return nil
+end
 
 -- ════════════════════════════════════════════════════════════════
---  AWAKENING COUNTER LOOP
+--  7. PVE HELPERS (declared before UI so AutoSec toggle can reference autoPveLoop)
 -- ════════════════════════════════════════════════════════════════
 
-task.spawn(function()
-    while true do
-        task.wait()
-        if not _G.AwakeningCounter_Enabled then continue end
-        if not isUltimateReady() then continue end
-        if not headOfHeiEquipped and not charlesEquipped then continue end
+local function getPveQuestType()
+    local pg = game.Players.LocalPlayer:FindFirstChild("PlayerGui")
+    if not pg then return nil end
+    local notifs = pg:FindFirstChild("Notifications")
+    if not notifs then return nil end
+    local holder = notifs:FindFirstChild("holder")
+    if not holder then return nil end
+    for _, child in ipairs(holder:GetChildren()) do
+        local name = child.Name:lower()
+        if name:find("exterminate") or name:find("defeat") then return "Exterminate" end
+        if name:find("deliver") then return "Deliver" end
+        if name:find("already in an active mission") then return "Active" end
+    end
+    return nil
+end
 
-        local myChar = LocalPlayer and LocalPlayer.Character
-        if not myChar then continue end
-        local myRoot = myChar:FindFirstChild("HumanoidRootPart")
-                    or myChar:FindFirstChild("Torso")
-                    or myChar:FindFirstChild("UpperTorso")
-        if not myRoot then continue end
+local function pveTeleport(pos)
+    local hrp = getHrp()
+    if hrp then pcall(function() hrp.Position = pos end) end
+end
+local function pveDist(a, b)
+    local d = a - b
+    return math.sqrt(d.X^2 + d.Y^2 + d.Z^2)
+end
+local function getPlayerSet()
+    local set = {}
+    for _, p in ipairs(game.Players:GetPlayers()) do set[p.Name] = true end
+    return set
+end
 
-        for _, p in ipairs(Players:GetPlayers()) do
-            if not p or isLocalPlayer(p) or not p.Character then continue end
-            local theirRoot = p.Character:FindFirstChild("HumanoidRootPart")
-                           or p.Character:FindFirstChild("Torso")
-                           or p.Character:FindFirstChild("UpperTorso")
-            if not theirRoot then continue end
-            local dist = getMagnitude(theirRoot.Position, myRoot.Position)
-            if dist <= BLOCK_RANGE then
-                local blockAnim = getCurrentAnimFromChar(p.Character, BlockMode)
-                local dashAnim  = getCurrentAnimFromChar(p.Character, DashMode)
-                if blockAnim or dashAnim then
-                    keypress(KEY_G); task.wait(0.1); keyrelease(KEY_G)
-                    if tick() - lastAwakeningNotif > notifCooldown then
-                        Win:Notify("Awakening", "Awakening counter on " .. p.Name, 2)
-                        lastAwakeningNotif = tick()
+local function autoPveLoop()
+    local QUEST_GIVER_POS = Vector3.new(701.67, 894.56, -221.74)
+    while _G.AutoPVE_Enabled do
+        _G.AutoRaid_Enabled = false; currentRaidTarget = nil; _cachedHrpAddr = nil
+        pveTeleport(QUEST_GIVER_POS); task.wait(0.5)
+        keypress(0x45); task.wait(1.5); keyrelease(0x45); task.wait(1)
+
+        local t0 = os.clock()
+        while os.clock() - t0 < 8 and _G.AutoPVE_Enabled do
+            local qType = getPveQuestType()
+            -- ja tem missao ativa — pula direto pro reset sem esperar 8s
+            if qType == "Active" then break end
+            if qType == "Deliver" then
+                local effects    = workspace:FindFirstChild("Effects")
+                local questGroup = effects and effects:FindFirstChild("questbrick")
+                local questBrick = questGroup and (questGroup:FindFirstChild("questbrick") or questGroup)
+                if questBrick and questBrick:IsA("BasePart") then
+                    pveTeleport(questBrick.Position); task.wait(3)
+                    keypress(0x45); task.wait(2); keyrelease(0x45); task.wait(1); break
+                end
+            elseif qType == "Exterminate" then
+                local live = workspace:FindFirstChild("Live")
+                local playerSet = getPlayerSet()
+                local hrp = getHrp()
+                local centerNpc, shortDist = nil, math.huge
+                if live and hrp then
+                    for _, npc in ipairs(live:GetChildren()) do
+                        if not playerSet[npc.Name]
+                        and npc:FindFirstChildWhichIsA("Highlight")
+                        and npc:FindFirstChild("Humanoid")
+                        and npc.Humanoid.Health > 0 then
+                            local npcHrp = npc:FindFirstChild("HumanoidRootPart")
+                            if npcHrp then
+                                local d = pveDist(npcHrp.Position, hrp.Position)
+                                if d < shortDist then shortDist=d; centerNpc=npc end
+                            end
+                        end
                     end
-                    break
+                end
+                if centerNpc then
+                    task.wait(1)
+                    local centerPos = centerNpc:FindFirstChild("HumanoidRootPart") and centerNpc.HumanoidRootPart.Position
+                    if centerPos then
+                        _pveTargets = {}; local hasTargets = false
+                        for _, npc in ipairs(live:GetChildren()) do
+                            if not playerSet[npc.Name]
+                            and npc:FindFirstChildWhichIsA("Highlight")
+                            and npc:FindFirstChild("Humanoid")
+                            and npc.Humanoid.Health > 0 then
+                                local nHrp = npc:FindFirstChild("HumanoidRootPart")
+                                if nHrp and pveDist(nHrp.Position, centerPos) <= 500 then
+                                    _pveTargets[npc]=true; hasTargets=true
+                                end
+                            end
+                        end
+                        if hasTargets then
+                            _G.AutoRaid_Enabled=true; savedPosRaid=getHrp() and getHrp().Position
+                            while _G.AutoPVE_Enabled do
+                                local stillAlive = false
+                                for npc in pairs(_pveTargets) do
+                                    if npc.Parent and npc:FindFirstChild("Humanoid") and npc.Humanoid.Health > 0 then
+                                        local nHrp = npc:FindFirstChild("HumanoidRootPart")
+                                        if nHrp then stillAlive=true; currentRaidTarget=nHrp; break end
+                                    else _pveTargets[npc]=nil end
+                                end
+                                if not stillAlive then break end
+                                task.wait(0.2)
+                            end
+                            _G.AutoRaid_Enabled=false; currentRaidTarget=nil
+                            _pveTargets=nil; _cachedHrpAddr=nil; savedPosRaid=nil
+                            task.wait(1); break
+                        end
+                    end
                 end
             end
-        end
-    end
-end)
-
--- ════════════════════════════════════════════════════════════════
---  BACKGROUND LOOPS
--- ════════════════════════════════════════════════════════════════
-
--- Periodic ability check
-task.spawn(function()
-    while true do
-        if _G.AutoCounter_Enabled or _G.AwakeningCounter_Enabled then
-            checkEquippedAbilities()
-        end
-        task.wait(1)
-    end
-end)
-
--- Auto QTE
-spawn(function()
-    while running do
-        if CONFIG.autoQTE.enabled and not iskeypressed(KEYS.F) then
-            if ProcessQTE() then
-                local delay = CONFIG.autoQTE.postPressDelay
-                if CONFIG.autoQTE.deviation > 0 then
-                    delay = delay + (math.random() * 2 - 1) * CONFIG.autoQTE.deviation
-                end
-                task.wait(delay)
-            else
-                task.wait(0.05)
-            end
-        else
             task.wait(0.1)
         end
+
+        if _G.AutoPVE_Enabled and getPveQuestType() == nil then
+            keypress(0x1B); task.wait(0.1); keyrelease(0x1B); task.wait(0.3)
+            keypress(0x52); task.wait(0.1); keyrelease(0x52); task.wait(0.3)
+            keypress(0x0D); task.wait(0.1); keyrelease(0x0D); task.wait(3)
+        end
+        if _G.AutoPVE_Enabled then task.wait(2) end
+    end
+    _G.AutoRaid_Enabled=false; currentRaidTarget=nil; _pveTargets=nil; _cachedHrpAddr=nil
+end
+
+-- ════════════════════════════════════════════════════════════════
+--  8. ESP CONFIG (declared before UI so toggles can reference it)
+-- ════════════════════════════════════════════════════════════════
+
+local _espCFG = {
+    box        = true,
+    name       = true,
+    distance   = true,
+    traceline  = false,
+    renderWait = 0.033,
+}
+
+local _playerESP = {
+    enable     = false,
+    showName   = true,
+    showDist   = true,
+    showStand  = true,
+    nameColor  = Color3.fromRGB(255, 255, 255),
+    standColor = Color3.fromRGB(255, 200, 50),
+    drawings   = {},
+}
+
+-- ════════════════════════════════════════════════════════════════
+--  8. UI — TABS & SECTIONS
+-- ════════════════════════════════════════════════════════════════
+
+-- ── Visuals ──────────────────────────────────────────────────────
+local VisualsTab   = Win:AddTab("Visuals")
+
+local EspSec       = VisualsTab:AddSection("Item ESP")
+EspSec:AddToggle("Enable ESP", false, function(v)
+    _G.ESP_Enabled = v
+    if not v then
+        for item, esp in pairs(activeESP) do
+            ESP.Destroy(esp)
+        end
+        activeESP = {}
+    end
+end)
+EspSec:AddToggle("Box",       true,  function(v) _espCFG.box       = v end)
+EspSec:AddToggle("Name",      true,  function(v) _espCFG.name      = v end)
+EspSec:AddToggle("Distance",  true,  function(v) _espCFG.distance  = v end)
+EspSec:AddToggle("Traceline", false, function(v) _espCFG.traceline = v end)
+EspSec:AddDropdown("ESP FPS", {"30","60","120","240"}, "30", function(v)
+    _espCFG.renderWait = math.max(1 / tonumber(v), 0.015)
+end)
+
+local PlayerEspSec = VisualsTab:AddSection("Player ESP")
+PlayerEspSec:AddToggle("Enable",   false, function(v) _playerESP.enable    = v end)
+PlayerEspSec:AddToggle("Name",     true,  function(v) _playerESP.showName  = v end)
+PlayerEspSec:AddToggle("Distance", true,  function(v) _playerESP.showDist  = v end)
+PlayerEspSec:AddToggle("Stand",    true,  function(v) _playerESP.showStand = v end)
+PlayerEspSec:AddColorPicker("Name Color",  Color3.fromRGB(255,255,255), function(c) _playerESP.nameColor  = c end)
+PlayerEspSec:AddColorPicker("Stand Color", Color3.fromRGB(255,200,50),  function(c) _playerESP.standColor = c end)
+
+-- Player ESP render loop
+task.spawn(function()
+    while true do
+        task.wait(_espCFG.renderWait)
+        if not _playerESP.enable then
+            for _, b in pairs(_playerESP.drawings) do
+                b.name.Visible=false; b.dist.Visible=false; b.stand.Visible=false
+            end
+            continue
+        end
+        local lp    = game.Players.LocalPlayer
+        local myHrp = lp.Character and lp.Character:FindFirstChild("HumanoidRootPart")
+        local myPos = myHrp and myHrp.Position
+        local live  = workspace:FindFirstChild("Live")
+        if not live then continue end
+        local seen = {}
+        for _, p in ipairs(game.Players:GetPlayers()) do
+            if p == lp then continue end
+            pcall(function()
+                local char = live:FindFirstChild(p.Name)
+                if not char then return end
+                local hrp = char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("Head")
+                if not hrp then return end
+                local wpos = hrp.Position + Vector3.new(0, 3, 0)
+                local okW, sp, onScreen = pcall(WorldToScreen, wpos)
+                if not okW or not sp or not onScreen then return end
+                seen[p.Name] = true
+                local b = _playerESP.drawings[p.Name]
+                if not b then
+                    local name  = Drawing.new("Text")
+                    name.Center=true; name.Outline=true
+                    name.Font=Drawing.Fonts.SystemBold; name.Size=14
+                    name.ZIndex=10; name.Visible=false
+                    local dist  = Drawing.new("Text")
+                    dist.Center=true; dist.Outline=true
+                    dist.Font=Drawing.Fonts.UI; dist.Size=12
+                    dist.Color=Color3.fromRGB(200,200,200); dist.ZIndex=10; dist.Visible=false
+                    local stand = Drawing.new("Text")
+                    stand.Center=true; stand.Outline=true
+                    stand.Font=Drawing.Fonts.UI; stand.Size=12
+                    stand.ZIndex=10; stand.Visible=false
+                    b = {name=name, dist=dist, stand=stand}
+                    _playerESP.drawings[p.Name] = b
+                end
+                if _playerESP.showName then
+                    b.name.Text=p.Name; b.name.Color=_playerESP.nameColor
+                    b.name.Position=Vector2.new(sp.X, sp.Y); b.name.Visible=true
+                else b.name.Visible=false end
+                local distY = sp.Y + (_playerESP.showName and 16 or 0)
+                if _playerESP.showDist and myPos then
+                    local dp = hrp.Position - myPos
+                    local d = math.floor(math.sqrt(dp.X^2+dp.Y^2+dp.Z^2))
+                    b.dist.Text="["..d.."m]"; b.dist.Color=Color3.fromRGB(200,200,200)
+                    b.dist.Position=Vector2.new(sp.X, distY); b.dist.Visible=true
+                    distY = distY + 16
+                else b.dist.Visible=false end
+                if _playerESP.showStand then
+                    local ok2, val = pcall(function() return char:GetAttribute("SummonedStand") end)
+                    val = (ok2 and type(val)=="string" and #val>=2) and val or "No Stand"
+                    b.stand.Text=val; b.stand.Color=_playerESP.standColor
+                    b.stand.Position=Vector2.new(sp.X, distY); b.stand.Visible=true
+                else b.stand.Visible=false end
+            end)
+        end
+        for name, b in pairs(_playerESP.drawings) do
+            if not seen[name] then
+                b.name.Visible=false; b.dist.Visible=false; b.stand.Visible=false
+            end
+        end
     end
 end)
 
--- ESP position update
-spawn(function()
-    while running do
-        pcall(UpdateESPPositions)
-        pcall(UpdateDomainHealthESP)
-        task.wait(1 / math.max(1, CONFIG.esp.updateRate))
+-- ── Exploits ─────────────────────────────────────────────────────
+local ExploitTab = Win:AddTab("Exploits")
+
+local AutoSec    = ExploitTab:AddSection("Auto")
+
+local mobDropdownRef = nil
+local function scanLiveMobs()
+    local names, seen = {}, {}
+    local live = game.Workspace:FindFirstChild("Live")
+    if not live then return names end
+    local playerSet = {}
+    for _, p in ipairs(game.Players:GetPlayers()) do playerSet[p.Name] = true end
+    for _, obj in ipairs(live:GetChildren()) do
+        if obj.Name ~= "Server" and not playerSet[obj.Name] then
+            local humanoid = obj:FindFirstChild("Humanoid")
+            if humanoid and humanoid.Health > 0 then
+                local ok, dn = pcall(function() return obj:GetAttribute("DisplayName") end)
+                local label = (ok and type(dn)=="string" and dn~="") and dn or obj.Name
+                if label:sub(1,1)=="." and #label>7 then label=label:sub(2,-7) end
+                if not label:lower():find("entity clone") and not seen[label] then
+                    seen[label]=true; table.insert(names, label)
+                end
+            end
+        end
+    end
+    table.sort(names)
+    return names
+end
+
+local _initialMobs = scanLiveMobs()
+mobDropdownRef = AutoSec:AddMultiDropdown("Mob Targets", _initialMobs, {}, {MaxVisible=5}, function(tbl)
+    selectedMobs = {}
+    for _, name in ipairs(tbl) do selectedMobs[name] = true end
+end)
+AutoSec:AddButton("Refresh Mob List", function()
+    local newMobs = scanLiveMobs()
+    if mobDropdownRef then mobDropdownRef:Refresh(newMobs, {}) end
+    Win:Notify("List updated!", tostring(#newMobs).." mobs found", 2)
+end)
+AutoSec:AddToggle("Auto Mob", false, function(v)
+    local hrp = getHrp()
+    if v then if hrp then savedPosMob=hrp.Position end
+    else
+        if hrp and savedPosMob then hrp.Position=savedPosMob end
+        savedPosMob=nil; currentMobTarget=nil; _cachedHrpAddr=nil
+    end
+    _G.AutoMob_Enabled = v
+end)
+AutoSec:AddToggle("Auto Raid", false, function(v)
+    local hrp = getHrp()
+    if v then if hrp then savedPosRaid=hrp.Position end
+    else
+        if hrp and savedPosRaid then hrp.Position=savedPosRaid end
+        savedPosRaid=nil; currentRaidTarget=nil; _cachedHrpAddr=nil; voidMotionOrigin=nil
+    end
+    _G.AutoRaid_Enabled = v
+end)
+AutoSec:AddToggle("Auto Play",    false, function(v) _G.AutoPlay_Enabled    = v end)
+AutoSec:AddToggle("Auto Replay",  false, function(v) _G.AutoReplay_Enabled  = v end)
+AutoSec:AddToggle("Auto Attack",  false, function(v) _G.AutoAttack_Enabled  = v end)
+AutoSec:AddToggle("Auto Stand",   false, function(v) _G.AutoStand_Enabled   = v end)
+AutoSec:AddToggle("Auto Meditate", false, function(v)
+    _G.AutoMeditate_Enabled = v
+    _G.MeditateInteracting  = false
+    meditateTarget          = nil
+end)
+AutoSec:AddToggle("Auto PVE Mission", false, function(v)
+    _G.AutoPVE_Enabled = v
+    if v then
+        if _pveThread then pcall(task.cancel, _pveThread) end
+        _pveThread = task.spawn(autoPveLoop)
+    else
+        if _pveThread then pcall(task.cancel, _pveThread); _pveThread=nil end
+        _G.AutoRaid_Enabled=false; currentRaidTarget=nil; _pveTargets=nil
+        _cachedHrpAddr=nil; keyrelease(0x45)
+    end
+end)
+AutoSec:AddToggle("Freeze Animations", false, function(v)
+    _G.FreezeAnim_Enabled = v
+    local char = game.Players.LocalPlayer.Character
+    if not char then return end
+    if v then
+        local animate = char:FindFirstChild("Animate")
+        if animate then _savedAnimate=animate; _savedAnimParent=animate.Parent; animate.Parent=game end
+        local humanoid = char:FindFirstChild("Humanoid")
+        if humanoid then
+            local animator = humanoid:FindFirstChild("Animator")
+            if animator then _savedAnimator=animator; _savedAnimrParent=animator.Parent; animator.Parent=game end
+        end
+    else
+        if _savedAnimate   and _savedAnimParent  then _savedAnimate.Parent  = _savedAnimParent  end
+        if _savedAnimator  and _savedAnimrParent then _savedAnimator.Parent = _savedAnimrParent end
+        _savedAnimate=nil; _savedAnimator=nil; _savedAnimParent=nil; _savedAnimrParent=nil
     end
 end)
 
--- ESP discovery
-spawn(function()
-    while running do pcall(DiscoverESPObjects) task.wait(0.5) end
+local ConfigSec = ExploitTab:AddSection("Height Config")
+ConfigSec:AddDropdown("Direction", {"Down","Up"}, "Down", {MaxVisible=2}, function(v)
+    heightDirection = (v=="Up") and 1 or -1; updateOffset()
+end)
+ConfigSec:AddSlider("Height Offset", {Min=0,Max=15,Default=10,Suffix=""}, function(v)
+    heightOffsetValue=v; updateOffset()
+end)
+ConfigSec:AddSlider("X Offset", {Min=0,Max=15,Default=5,Suffix=""}, function(v)
+    xOffset=v
 end)
 
--- Ratio QTE
-spawn(function()
-    while running do pcall(ProcessRatioQTE) task.wait(0.016) end
+-- ── Items ─────────────────────────────────────────────────────────
+local ItemsTab    = Win:AddTab("Items")
+
+local ItemFarmSec = ItemsTab:AddSection("Auto Farm")
+ItemFarmSec:AddMultiDropdown("Farm Items", (function()
+    local t={}; for name in pairs(targetNames) do table.insert(t,name) end; table.sort(t); return t
+end)(), {}, {MaxVisible=6}, function(tbl)
+    selectedItems={}; for _,name in ipairs(tbl) do selectedItems[name]=true end
+end)
+ItemFarmSec:AddToggle("Underground", false, function(v) farmUnderground=v end)
+ItemFarmSec:AddToggle("Auto Farm", false, function(v)
+    local hrp = getHrp()
+    if v then
+        farmSafePos = (hrp and _G.SafePlace_Enabled) and Vector3.new(hrp.Position.X,hrp.Position.Y+3000,hrp.Position.Z) or nil
+    else
+        farmSafePos = nil
+    end
+    _G.AutoFarm_Enabled = v
+end)
+ItemFarmSec:AddToggle("Auto Collect", false, function(v) _G.AutoCollect_Enabled = v end)
+ItemFarmSec:AddToggle("Safe Place", false, function(v)
+    local hrp = getHrp()
+    if v then
+        if hrp then
+            savedPosSafe = hrp.Position
+            local skyPos = Vector3.new(hrp.Position.X, hrp.Position.Y+3000, hrp.Position.Z)
+            hrp.Position = skyPos
+            if _G.AutoFarm_Enabled then farmSafePos = skyPos end
+        end
+    else
+        if hrp and savedPosSafe then hrp.Position = savedPosSafe end
+        savedPosSafe = nil
+        if _G.AutoFarm_Enabled then farmSafePos = nil end
+    end
+    _G.SafePlace_Enabled = v
 end)
 
--- Perfect Swap
-spawn(function()
-    while running do pcall(ProcessPerfectSwap) task.wait(0.01) end
+local ItemTpSec = ItemsTab:AddSection("Teleport")
+ItemTpSec:AddMultiDropdown("Select Items", (function()
+    local t={}; for name in pairs(targetNames) do table.insert(t,name) end; table.sort(t); return t
+end)(), {}, {MaxVisible=6}, function(tbl)
+    selectedItems={}; for _,name in ipairs(tbl) do selectedItems[name]=true end
+end)
+ItemTpSec:AddButton("Teleport to Nearest Item", function()
+    local hrp=getHrp(); local obj=getNearestSelectedObject()
+    if hrp and obj then hrp.Position=obj.Position+Vector3.new(0,3,0); Win:Notify("Success","Teleported!",2)
+    else Win:Notify("Error","No selected items found",2) end
 end)
 
--- Chara QTE
-spawn(function()
-    while running do pcall(RunCharaQTE) task.wait(0.2) end
+-- ── Teleport ──────────────────────────────────────────────────────
+local TpTab = Win:AddTab("Teleport")
+
+local TpNpcSec = TpTab:AddSection("NPCs")
+TpNpcSec:AddDropdown("Select NPC", NpcOptions, NpcOptions[1], {MaxVisible=5}, function(v) selectedNpc=v end)
+TpNpcSec:AddButton("Teleport to NPC", function()
+    local hrp=getHrp(); if not hrp then return end
+    local target=findNpc(selectedNpc)
+    if target then hrp.Position=target.Position+Vector3.new(0,3,0) end
 end)
 
--- Domain Votes
-spawn(function()
-    while running do pcall(ProcessDomainVotes) task.wait(0.05) end
+local TpMissionSec = TpTab:AddSection("Mission")
+TpMissionSec:AddButton("Teleport to Mission", function()
+    local hrp=getHrp(); if not hrp then return end
+    local effects=game.Workspace:FindFirstChild("Effects")
+    local questbrick=effects and effects:FindFirstChild("questbrick")
+    local part=questbrick and (questbrick.PrimaryPart or questbrick:FindFirstChildOfClass("BasePart"))
+    if part then hrp.Position=part.Position+Vector3.new(0,3,0) end
 end)
 
--- Ping tracker
-spawn(function()
-    while running do currentPing = GetPing() task.wait(1) end
+local TpBusSec        = TpTab:AddSection("Bus Stops")
+local busStopOptions  = {}
+for i=1,19 do table.insert(busStopOptions, tostring(i)) end
+local selectedBusStop = "1"
+TpBusSec:AddDropdown("Bus Stop", busStopOptions, "1", {MaxVisible=6}, function(v) selectedBusStop=v end)
+TpBusSec:AddButton("Teleport to Bus Stop", function()
+    local hrp=getHrp(); if not hrp then return end
+    pcall(function()
+        local map=game.Workspace:FindFirstChild("Map")
+        local busStops=map and map:FindFirstChild("Bus Stops")
+        local stop=busStops and busStops:FindFirstChild(selectedBusStop)
+        if not stop then Win:Notify("Error","Bus Stop not found",2); return end
+        local target
+        if selectedBusStop=="17" or selectedBusStop=="18" or selectedBusStop=="19" then
+            target=stop:FindFirstChild("Bus Parade Glass")
+        else
+            local parade=stop:FindFirstChild("New Bus Parade")
+            target=parade and parade:FindFirstChild("Plane.002")
+        end
+        local pos=target and resolveWorldPosition(target)
+        if pos then hrp.Position=Vector3.new(pos.X,pos.Y+5,pos.Z) end
+    end)
 end)
+
+local TpRaidSec  = TpTab:AddSection("Raid NPCs")
+local _raidNames = {}
+for _,v in ipairs(TpRaidNPCs) do table.insert(_raidNames,v.name) end
+local selectedRaid = _raidNames[1]
+TpRaidSec:AddDropdown("Raid NPC", _raidNames, _raidNames[1], {MaxVisible=4}, function(v) selectedRaid=v end)
+TpRaidSec:AddButton("Teleport", function()
+    local hrp=getHrp(); if not hrp then return end
+    for _,v in ipairs(TpRaidNPCs) do if v.name==selectedRaid then hrp.Position=v.pos; break end end
+end)
+
+local TpGangSec  = TpTab:AddSection("Gang Territories")
+local _gangNames = {}
+for _,v in ipairs(TpGangZones) do table.insert(_gangNames,v.name) end
+local selectedGang = _gangNames[1]
+TpGangSec:AddDropdown("Territory", _gangNames, _gangNames[1], {MaxVisible=3}, function(v) selectedGang=v end)
+TpGangSec:AddButton("Teleport", function()
+    local hrp=getHrp(); if not hrp then return end
+    pcall(function()
+        local map=game.Workspace:FindFirstChild("Map")
+        local territories=map and map:FindFirstChild("Gang Territories")
+        local territory=territories and territories:FindFirstChild(selectedGang)
+        local zone=territory and territory:FindFirstChild("Zone")
+        local pos=zone and resolveWorldPosition(zone)
+        if pos then hrp.Position=Vector3.new(pos.X,pos.Y+5,pos.Z) end
+    end)
+end)
+
+local TpRaceSec  = TpTab:AddSection("Race NPCs")
+local _raceNames = {}
+for _,v in ipairs(TpRaceNPCs) do table.insert(_raceNames,v.name) end
+local selectedRace = _raceNames[1]
+TpRaceSec:AddDropdown("Race NPC", _raceNames, _raceNames[1], {MaxVisible=3}, function(v) selectedRace=v end)
+TpRaceSec:AddButton("Teleport", function()
+    local hrp=getHrp(); if not hrp then return end
+    for _,v in ipairs(TpRaceNPCs) do if v.name==selectedRace then hrp.Position=v.pos; break end end
+end)
+
+local TpFightSec  = TpTab:AddSection("Fighting Style NPCs")
+local _fightNames = {}
+for _,v in ipairs(TpFightingNPCs) do table.insert(_fightNames,v.name) end
+local selectedFighting = _fightNames[1]
+TpFightSec:AddDropdown("Fighting Style", _fightNames, _fightNames[1], {MaxVisible=3}, function(v) selectedFighting=v end)
+TpFightSec:AddButton("Teleport", function()
+    local hrp=getHrp(); if not hrp then return end
+    for _,v in ipairs(TpFightingNPCs) do if v.name==selectedFighting then hrp.Position=v.pos; break end end
+end)
+
+local TpBossSec  = TpTab:AddSection("World Bosses")
+local _bossNames = {}
+for _,v in ipairs(TpWorldBosses) do table.insert(_bossNames,v.name) end
+local selectedBoss = _bossNames[1]
+TpBossSec:AddDropdown("World Boss", _bossNames, _bossNames[1], {MaxVisible=5}, function(v) selectedBoss=v end)
+TpBossSec:AddButton("Teleport", function()
+    local hrp=getHrp(); if not hrp then return end
+    for _,v in ipairs(TpWorldBosses) do if v.name==selectedBoss then hrp.Position=v.pos; break end end
+end)
+
+local TpMiscSec  = TpTab:AddSection("Misc")
+local _miscNames = {}
+for _,v in ipairs(TpMiscPlaces) do table.insert(_miscNames,v.name) end
+local selectedMisc = _miscNames[1]
+TpMiscSec:AddDropdown("Local", _miscNames, _miscNames[1], {MaxVisible=4}, function(v) selectedMisc=v end)
+TpMiscSec:AddButton("Teleport", function()
+    local hrp=getHrp(); if not hrp then return end
+    for _,v in ipairs(TpMiscPlaces) do if v.name==selectedMisc then hrp.Position=v.pos; break end end
+end)
+
+-- ── Rage ──────────────────────────────────────────────────────────
+local RageTab = Win:AddTab("Rage")
+
+local PvpSec          = RageTab:AddSection("Auto PvP")
+local lp              = game.Players.LocalPlayer
+local pvpPlayerOptions = {}
+for _,p in ipairs(game.Players:GetPlayers()) do
+    if p.Name ~= lp.Name then table.insert(pvpPlayerOptions, p.Name) end
+end
+local pvpDropdownRef = PvpSec:AddDropdown("Select Player", pvpPlayerOptions, pvpPlayerOptions[1] or "", {MaxVisible=5}, function(v)
+    selectedPvpPlayer=v; pvpTarget=nil
+end)
+PvpSec:AddButton("Refresh Players", function()
+    local lp2=game.Players.LocalPlayer
+    local newOpts={}
+    for _,p in ipairs(game.Players:GetPlayers()) do
+        if p.Name~=lp2.Name then table.insert(newOpts,p.Name) end
+    end
+    pvpDropdownRef:Refresh(newOpts, newOpts[1] or "")
+    selectedPvpPlayer=newOpts[1] or nil; pvpTarget=nil
+    Win:Notify("Refreshed!", #newOpts.." players found", 2)
+end)
+PvpSec:AddToggle("Auto PvP", false, function(v)
+    local hrp=getHrp()
+    if v then if hrp then savedPosPvp=hrp.Position end
+    else
+        if hrp and savedPosPvp then hrp.Position=savedPosPvp end
+        savedPosPvp=nil; pvpTarget=nil; _cachedHrpAddr=nil
+    end
+    _G.AutoPvp_Enabled=v
+end)
+
+local PvpConfigSec = RageTab:AddSection("Height Config")
+PvpConfigSec:AddDropdown("Direction", {"Down","Up"}, "Down", {MaxVisible=2}, function(v)
+    pvpHeightDirection=(v=="Up") and 1 or -1
+    pvpHeightOffset=pvpHeightValue*pvpHeightDirection
+end)
+PvpConfigSec:AddSlider("Height Offset", {Min=0,Max=15,Default=10,Suffix=""}, function(v)
+    pvpHeightValue=v; pvpHeightOffset=pvpHeightValue*pvpHeightDirection
+end)
+PvpConfigSec:AddSlider("X Offset", {Min=0,Max=15,Default=5,Suffix=""}, function(v) pvpXOffset=v end)
+
+local UserIdSec    = RageTab:AddSection("User ID")
+local spoofedUserId = nil
+task.spawn(function()
+    while true do
+        task.wait(0.015)
+        if spoofedUserId then
+            pcall(function()
+                local label=game.Players.LocalPlayer.PlayerGui.MainHud.topsection.second.userid
+                label.Text=spoofedUserId
+            end)
+        end
+    end
+end)
+UserIdSec:AddTextbox("Set User ID", "", function(v)
+    spoofedUserId = (v=="") and nil or tostring(v)
+end)
+UserIdSec:AddButton("Reset", function()
+    spoofedUserId=nil
+    pcall(function()
+        local label=game.Players.LocalPlayer.PlayerGui.MainHud.topsection.second.userid
+        label.Text=tostring(game.Players.LocalPlayer.UserId)
+    end)
+end)
+
+-- ── Positions ─────────────────────────────────────────────────────
+local posCapturing = false
+local DEFAULT_POS  = {
+    play="1079,693", replay="1045,760", standSearch="748,331",
+    standSlot="689,400", standUse="1384,586", standConfirm="883,570", meditate="752,934",
+}
+local pos_play, pos_replay, pos_standSearch = nil, nil, nil
+local pos_standSlot, pos_standUse, pos_standConfirm, pos_meditate = nil, nil, nil, nil
+
+local function parsePos(str)
+    if type(str)~="string" or str=="" then return nil end
+    local x,y=str:match("^(%d+)%s*,%s*(%d+)$")
+    if x and y then return {x=tonumber(x),y=tonumber(y)} end
+    return nil
+end
+pos_play=parsePos(DEFAULT_POS.play); pos_replay=parsePos(DEFAULT_POS.replay)
+pos_standSearch=parsePos(DEFAULT_POS.standSearch); pos_standSlot=parsePos(DEFAULT_POS.standSlot)
+pos_standUse=parsePos(DEFAULT_POS.standUse); pos_standConfirm=parsePos(DEFAULT_POS.standConfirm)
+pos_meditate=parsePos(DEFAULT_POS.meditate)
+
+local function capturePosition(label, tbRef)
+    if posCapturing then Win:Notify("Please wait","A capture is already in progress",2); return end
+    posCapturing=true; Win:Notify("Move mouse & press 1","Capturing: "..label,5)
+    task.spawn(function()
+        while iskeypressed(0x31) do task.wait() end
+        while not iskeypressed(0x31) do task.wait() end
+        local mouse=game.Players.LocalPlayer:GetMouse()
+        local x,y=math.floor(mouse.X),math.floor(mouse.Y)
+        local str=x..","..y; tbRef:Set(str)
+        posCapturing=false; Win:Notify("Changed!",label..": "..str,3)
+    end)
+end
+
+local PosTab = Win:AddTab("Positions")
+
+local PosPlaySec = PosTab:AddSection("Auto Play")
+local posPlayTb  = PosPlaySec:AddTextbox("Quick Play", DEFAULT_POS.play, function(v) pos_play=parsePos(v) end)
+PosPlaySec:AddButton("Change", function() capturePosition("Quick Play", posPlayTb) end)
+PosPlaySec:AddButton("Reset",  function() posPlayTb:Set(DEFAULT_POS.play) end)
+
+local PosReplaySec = PosTab:AddSection("Auto Replay")
+local posReplayTb  = PosReplaySec:AddTextbox("Retry Button", DEFAULT_POS.replay, function(v) pos_replay=parsePos(v) end)
+PosReplaySec:AddButton("Change", function() capturePosition("Retry Button", posReplayTb) end)
+PosReplaySec:AddButton("Reset",  function() posReplayTb:Set(DEFAULT_POS.replay) end)
+
+local PosStandSec  = PosTab:AddSection("Stand Roll")
+local posSearchTb  = PosStandSec:AddTextbox("Stand Search",  DEFAULT_POS.standSearch,  function(v) pos_standSearch=parsePos(v)  end)
+local posSlotTb    = PosStandSec:AddTextbox("Stand Slot",    DEFAULT_POS.standSlot,    function(v) pos_standSlot=parsePos(v)    end)
+local posUseTb     = PosStandSec:AddTextbox("Stand Use",     DEFAULT_POS.standUse,     function(v) pos_standUse=parsePos(v)     end)
+local posConfirmTb = PosStandSec:AddTextbox("Stand Confirm", DEFAULT_POS.standConfirm, function(v) pos_standConfirm=parsePos(v) end)
+PosStandSec:AddButton("Change Search",  function() capturePosition("Stand Search",  posSearchTb)  end)
+PosStandSec:AddButton("Change Slot",    function() capturePosition("Stand Slot",    posSlotTb)    end)
+PosStandSec:AddButton("Change Use",     function() capturePosition("Stand Use",     posUseTb)     end)
+PosStandSec:AddButton("Change Confirm", function() capturePosition("Stand Confirm", posConfirmTb) end)
+PosStandSec:AddButton("Reset All", function()
+    posSearchTb:Set(DEFAULT_POS.standSearch); posSlotTb:Set(DEFAULT_POS.standSlot)
+    posUseTb:Set(DEFAULT_POS.standUse); posConfirmTb:Set(DEFAULT_POS.standConfirm)
+    Win:Notify("Reset","Stand Roll back to default",2)
+end)
+
+local PosMeditateSec = PosTab:AddSection("Auto Meditate")
+local posMeditateTb  = PosMeditateSec:AddTextbox("Dialogue Button", DEFAULT_POS.meditate, function(v) pos_meditate=parsePos(v) end)
+PosMeditateSec:AddButton("Change", function() capturePosition("Meditate Dialogue", posMeditateTb) end)
+PosMeditateSec:AddButton("Reset",  function() pos_meditate=nil; posMeditateTb:Set("") end)
+
+-- ── Stand ─────────────────────────────────────────────────────────
+local StandTab     = Win:AddTab("Stand")
+local HttpService  = game:GetService("HttpService")
+
+local function getStandData()
+    local pd=game.Players.LocalPlayer:FindFirstChild("PlayerData"); if not pd then return nil end
+    local sd=pd:FindFirstChild("SlotData"); if not sd then return nil end
+    local standVal=sd:FindFirstChild("Stand")
+    if standVal and standVal:IsA("StringValue") then
+        local str=standVal.Value
+        if str and str~="" and str~="None" then
+            local ok,decoded=pcall(function() return HttpService:JSONDecode(str) end)
+            if ok and type(decoded)=="table" then return decoded end
+        end
+    end
+    return nil
+end
+
+local grades = {[1]="D",[2]="C",[3]="B",[4]="A",[5]="S"}
+local function getGrade(val) return grades[tonumber(val)] or tostring(val or 0) end
+
+local StandInfoSec = StandTab:AddSection("Stand Info")
+local standLabel1  = StandInfoSec:AddLabel("Stand: ---")
+local standLabel2  = StandInfoSec:AddLabel("Trait: ---")
+local standLabel3  = StandInfoSec:AddLabel("Speed: ---")
+local standLabel4  = StandInfoSec:AddLabel("Spec: ---")
+local standLabel5  = StandInfoSec:AddLabel("Str: ---")
+local standLabel6  = StandInfoSec:AddLabel("Skin: ---")
+
+local function updateStandLabels()
+    local sd=getStandData()
+    if sd and sd.Name then
+        standLabel1:Set("Stand: "..tostring(sd.Name))
+        standLabel2:Set("Trait: "..tostring(sd.Trait or "None"))
+        standLabel3:Set("Speed: "..getGrade(sd.Speed))
+        standLabel4:Set("Spec: " ..getGrade(sd.Specialty))
+        standLabel5:Set("Str: "  ..getGrade(sd.Strength))
+        standLabel6:Set("Skin: " ..tostring(sd.Skin or "None"))
+    else
+        standLabel1:Set("Stand: None"); standLabel2:Set("Trait: None")
+        standLabel3:Set("Speed: -");    standLabel4:Set("Spec: -")
+        standLabel5:Set("Str: -");      standLabel6:Set("Skin: None")
+    end
+end
+StandInfoSec:AddButton("Refresh Info", function() updateStandLabels() end)
+task.spawn(function() task.wait(3); updateStandLabels() end)
+
+local StandRollSec       = StandTab:AddSection("Auto Roll")
+local StandList = {
+    "Anubis","Crazy Diamond","Golden Experience","King Crimson","Killer Queen",
+    "Magician's Red","Purple Haze","Red Hot Chili Pepper","Star Platinum",
+    "Stone Free","The Hand","The World","The World High Voltage","Weather Report","Whitesnake",
+}
+table.sort(StandList)
+
+local targetStands        = {}
+local stopOnAnySkin       = false
+local standRollThread     = nil
+local autoStandRollActive = false
+
+StandRollSec:AddMultiDropdown("Target Stands", StandList, {}, {MaxVisible=6}, function(tbl)
+    targetStands={}; for _,name in ipairs(tbl) do targetStands[name]=true end
+end)
+StandRollSec:AddToggle("Stop on Any Skin", false, function(v) stopOnAnySkin=v end)
+
+local function useStandArrow()
+    if Win._open then return false end
+
+    keypress(0xC0); task.wait(0.05); keyrelease(0xC0)
+    task.wait(3)
+
+    if not isrbxactive() then return false end
+    setrobloxinput(true)
+
+    -- ── Search box ────────────────────────────────────────────
+    local cx, cy
+    if pos_standSearch then
+        cx, cy = pos_standSearch.x, pos_standSearch.y
+    else
+        local gui = game.Players.LocalPlayer:FindFirstChild("PlayerGui")
+        local inv = gui and gui:FindFirstChild("Inventory")
+        local cg  = inv and inv:FindFirstChild("CanvasGroup")
+        local bf  = cg  and cg:FindFirstChild("backpack_frame")
+        local sb  = bf  and bf:FindFirstChild("search")
+        if not sb then return false end
+        local absPos  = sb.AbsolutePosition
+        local absSize = sb.AbsoluteSize
+        cx = absPos.X + absSize.X/2
+        cy = absPos.Y + absSize.Y/2 + 20
+    end
+
+    mousemoveabs(cx, cy); task.wait(0.3)
+    mousemoverel(0, 2);   task.wait(0.3)
+    mouse1click();        task.wait(0.4)
+
+    setclipboard("stand arrow"); task.wait(0.1)
+    keypress(0x11); keypress(0x56); task.wait(0.05)
+    keyrelease(0x56); keyrelease(0x11); task.wait(0.4)
+
+    -- ── Arrow slot ────────────────────────────────────────────
+    if pos_standSlot then
+        mousemoveabs(pos_standSlot.x, pos_standSlot.y); task.wait(0.3)
+        mousemoverel(0, 2); task.wait(0.3)
+        mouse1click(); task.wait(0.5)
+    end
+
+    -- ── Use button (só clica se posição estiver definida) ─────
+    if pos_standUse then
+        mousemoveabs(pos_standUse.x, pos_standUse.y); task.wait(0.3)
+        mousemoverel(0, 2); task.wait(0.3)
+        mouse1click()
+    end
+
+    task.wait(0.5)
+
+    -- ── Confirm button (só clica se posição estiver definida) ─
+    if pos_standConfirm then
+        mousemoveabs(pos_standConfirm.x, pos_standConfirm.y); task.wait(0.3)
+        mousemoverel(0, 2); task.wait(0.3)
+        mouse1click()
+    end
+
+    return true
+end
+
+local autoRollToggleRef = nil
+
+local function autoStandRollLoop()
+    while autoStandRollActive do
+        local oldData = getStandData()
+        local oldName = oldData and oldData.Name or "None"
+
+        local used = useStandArrow()
+        if not used then task.wait(2); continue end
+
+        local t0 = os.clock()
+        local newData = nil
+        while (os.clock() - t0 < 15) and autoStandRollActive do
+            newData = getStandData()
+            local newName = newData and newData.Name or "None"
+            if newName ~= oldName then break end
+            task.wait(0.5)
+        end
+
+        if not autoStandRollActive then break end
+
+        if newData then
+            updateStandLabels()
+            local newName = newData.Name or "None"
+            local hasSkin = newData.Skin and newData.Skin ~= "" and newData.Skin ~= "None"
+            local isTarget = targetStands[newName] == true
+            if isTarget or (stopOnAnySkin and hasSkin) then
+                autoStandRollActive = false
+                if autoRollToggleRef then pcall(function() autoRollToggleRef:Set(false) end) end
+                Win:Notify("Auto Roll stopped!", "Stand: " .. tostring(newName), 5)
+                break
+            end
+        end
+        task.wait(2)
+    end
+end
+
+local rollToggle = StandRollSec:AddToggle("Auto Roll", false, function(v)
+    autoStandRollActive = v
+    if v then
+        if standRollThread then pcall(task.cancel, standRollThread) end
+        standRollThread = task.spawn(autoStandRollLoop)
+    else
+        if standRollThread then pcall(task.cancel, standRollThread); standRollThread = nil end
+    end
+end)
+autoRollToggleRef = rollToggle
+
+-- ════════════════════════════════════════════════════════════════
+--  9. SCRIPT LOGIC — LOOPS
+-- ════════════════════════════════════════════════════════════════
+
+-- ── ESP visual config ────────────────────────────────────────────
+
+-- SCAN: cria ESP para novos itens
+task.spawn(function()
+    while true do
+        if _G.ESP_Enabled then
+            for _, model in ipairs(workspace:GetChildren()) do
+                if model.Name == "Model" then
+                    for _, obj in ipairs(model:GetChildren()) do
+                        if targetNames[obj.Name] and not activeESP[obj] then
+                            activeESP[obj] = ESP.Create(obj, {
+                                box      = _espCFG.box,
+                                name     = _espCFG.name,
+                                distance = _espCFG.distance,
+                                line     = _espCFG.traceline,
+                                color    = targetNames[obj.Name],
+                            })
+                        end
+                    end
+                end
+            end
+            task.wait(5)
+        else task.wait(1) end
+    end
+end)
+
+-- RENDER
+task.spawn(function()
+    while true do
+        task.wait(_espCFG.renderWait)
+        if not _G.ESP_Enabled then
+            for _, esp in pairs(activeESP) do ESP.Hide(esp) end
+            continue
+        end
+        local myPos = getHrp() and getHrp().Position
+        if not myPos then continue end
+        for item, esp in pairs(activeESP) do
+            if not item or not item.Parent then
+                ESP.Destroy(esp); activeESP[item] = nil; continue
+            end
+            esp.cfg.box      = _espCFG.box
+            esp.cfg.name     = _espCFG.name
+            esp.cfg.distance = _espCFG.distance
+            esp.cfg.line     = _espCFG.traceline
+            ESP.Update(esp, myPos)
+        end
+    end
+end)
+
+local farmItemCache     = {}
+local farmCacheLastTime = 0
+local farmCacheTTL      = 1.5
+
+local function refreshFarmCache()
+    local now = os.clock()
+    if now - farmCacheLastTime < farmCacheTTL then return end
+    farmCacheLastTime = now
+    farmItemCache = {}
+    local ok, children = pcall(function() return workspace:GetChildren() end)
+    if not ok then return end
+    for _, child in ipairs(children) do
+        if child.Name == "Model" then
+            local okD, descs = pcall(function() return child:GetDescendants() end)
+            if okD then
+                for _, obj in ipairs(descs) do
+                    if targetNames[obj.Name] then
+                        table.insert(farmItemCache, obj)
+                        if #farmItemCache >= 30 then return end
+                    end
+                end
+            end
+        end
+        if #farmItemCache >= 30 then break end
+    end
+end
+
+local function getNearestCachedItem(hrpPos)
+    local best, bestDist = nil, math.huge
+    for _, obj in ipairs(farmItemCache) do
+        if obj and obj.Parent then
+            local ok, pos = pcall(function() return obj.Position end)
+            if ok and pos then
+                local dx = hrpPos.X - pos.X; local dy = hrpPos.Y - pos.Y; local dz = hrpPos.Z - pos.Z
+                local d = dx*dx + dy*dy + dz*dz
+                if d < bestDist then bestDist = d; best = obj end
+            end
+        end
+    end
+    return best
+end
+
+-- ═══════════════════════════════════════════════════════════════
+--  FARM STATE MACHINE
+--  _G.AutoFarmWorking = false → sem item, Safe Place segura no céu
+--  _G.AutoFarmWorking = true  → item achado, Safe Place para,
+--                               farm tpa, E + 3 segurados juntos
+-- ═══════════════════════════════════════════════════════════════
+_G.AutoFarmWorking = false
+
+
+-- ── Farm principal ────────────────────────────────────────────
+task.spawn(function()
+    while true do
+        task.wait(0.1)
+        if not _G.AutoFarm_Enabled then
+            _G.AutoFarmWorking = false
+            continue
+        end
+        if not isSpawned() then _G.AutoFarmWorking = false; task.wait(1); continue end
+
+        local hrp = getHrp()
+        if not hrp then _G.AutoFarmWorking = false; task.wait(1); continue end
+
+        refreshFarmCache()
+        local obj = getNearestCachedItem(hrp.Position)
+
+        if obj and obj.Parent then
+            _G.AutoFarmWorking = true
+            local yOff = farmUnderground and -5 or 3
+            if _G.AutoCollect_Enabled then
+                keypress(69)
+                local t0 = os.clock()
+                while os.clock() - t0 < 1.8 and _G.AutoFarm_Enabled do
+                    if obj and obj.Parent then
+                        hrp.Position = obj.Position + Vector3.new(0, yOff, 0)
+                        pcall(function() hrp.AssemblyLinearVelocity = Vector3.new(0,0,0) end)
+                    end
+                    task.wait(0.015)
+                end
+                keyrelease(69)
+                task.wait(0.3)
+            else
+                hrp.Position = obj.Position + Vector3.new(0, yOff, 0)
+                pcall(function() hrp.AssemblyLinearVelocity = Vector3.new(0,0,0) end)
+                task.wait(0.1)
+            end
+        else
+            -- ── sem item: Working off, Safe Place assume ──────
+            _G.AutoFarmWorking = false
+            if farmSafePos then
+                hrp.Position = farmSafePos
+                pcall(function() hrp.AssemblyLinearVelocity = Vector3.new(0,0,0) end)
+            end
+            task.wait(0.5)
+        end
+    end
+end)
+
+-- ── Auto Collect ──────────────────────────────────────────────
+-- Só age quando Working = true (item próximo), segura 3 no mesmo timing do farm
+task.spawn(function()
+    while true do
+        task.wait(0.1)
+        if not _G.AutoCollect_Enabled then continue end
+        if not isSpawned() then continue end
+        if Win._open then continue end
+        if not _G.AutoFarmWorking then continue end
+
+        keypress(0x33)
+        task.wait(1.8)
+        keyrelease(0x33)
+        task.wait(0.3)
+    end
+end)
+
+-- ── Safe Place via task.wait ─────────────────────────────────
+task.spawn(function()
+    while true do
+        task.wait(0.015)
+        if not _G.SafePlace_Enabled then continue end
+        if not isSpawned() then continue end
+        if _G.AutoFarmWorking then continue end
+        local hrp = getHrp()
+        if not hrp or not savedPosSafe then continue end
+        local skyY = savedPosSafe.Y + 3000
+        hrp.Position = Vector3.new(savedPosSafe.X, skyY, savedPosSafe.Z)
+        pcall(function() hrp.AssemblyLinearVelocity = Vector3.new(0,0,0) end)
+    end
+end)
+
+-- Loop de tp unificado
+task.spawn(function()
+    while true do
+        task.wait(0.015)
+        if not isSpawned() then continue end
+        local hrp = getHrp()
+        if not hrp then continue end
+        if _G.AutoMob_Enabled and currentMobTarget then
+            if not currentMobTarget.Parent then
+                currentMobTarget = nil; _cachedHrpAddr = nil
+            else
+                trackTarget(hrp, currentMobTarget, heightOffset, xOffset)
+            end
+        elseif _G.AutoRaid_Enabled and currentRaidTarget then
+            if not currentRaidTarget.Parent then
+                currentRaidTarget = nil; _cachedHrpAddr = nil
+            else
+                trackTarget(hrp, currentRaidTarget, heightOffset, xOffset)
+            end
+        elseif _G.AutoPvp_Enabled and pvpTarget then
+            if not pvpTarget.Parent then
+                pvpTarget = nil; _cachedHrpAddr = nil
+            else
+                trackTarget(hrp, pvpTarget, pvpHeightOffset, pvpXOffset)
+            end
+        elseif _G.AutoMeditate_Enabled and meditateTarget and not _G.MeditateInteracting then
+            if not meditateTarget.Parent then
+                meditateTarget = nil; _cachedHrpAddr = nil
+            else
+                local cloneHrp = meditateTarget:FindFirstChild("HumanoidRootPart")
+                if cloneHrp then trackTarget(hrp, cloneHrp, heightOffset, xOffset)
+                else meditateTarget = nil end
+            end
+        end
+    end
+end)
+
+task.spawn(function()
+    while true do
+        task.wait(0.015)
+        if not _G.AutoMob_Enabled then 
+            currentMobTarget = nil 
+            continue 
+        end
+        
+        local hrp = getHrp()
+        if not hrp or not hrp.Parent then 
+            currentMobTarget = nil
+            continue 
+        end
+
+        -- Validação do alvo atual
+        if currentMobTarget then
+            local tarPart = currentMobTarget.Parent
+            if not tarPart or not tarPart.Parent or not tarPart:FindFirstChild("Humanoid") or tarPart.Humanoid.Health <= 0 then
+                currentMobTarget = nil
+                _cachedHrpAddr = nil
+            end
+        end
+
+        -- Busca novo alvo (Cálculo manual compatível com Matcha)
+        if not currentMobTarget then
+            local nearest = nil
+            local minDistSq = 999999
+            local live = workspace:FindFirstChild("Live")
+            if live then
+                local children = live:GetChildren()
+                for i = 1, #children do
+                    local obj = children[i]
+                    local rawName = obj.Name
+                    -- Lógica do ponto "." e limpeza de nome
+                    if rawName:sub(1,1) == "." and #rawName > 7 then
+                        local label = rawName:sub(2, -7)
+                        if selectedMobs[label] then
+                            local hum = obj:FindFirstChild("Humanoid")
+                            local mobHrp = obj:FindFirstChild("HumanoidRootPart")
+                            if hum and hum.Health > 0 and mobHrp then
+                                -- CÁLCULO MANUAL X, Y, Z (Proteção contra Nil)
+                                local p1 = hrp.Position
+                                local p2 = mobHrp.Position
+                                local dx, dy, dz = p1.X - p2.X, p1.Y - p2.Y, p1.Z - p2.Z
+                                local distSq = (dx * dx) + (dy * dy) + (dz * dz)
+                                
+                                if distSq < minDistSq then 
+                                    minDistSq = distSq
+                                    nearest = mobHrp 
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+            currentMobTarget = nearest
+        end
+
+        if currentMobTarget then
+            trackTarget(hrp, currentMobTarget, heightOffset, xOffset)
+        end
+    end
+end)
+
+task.spawn(function()
+    while true do
+        task.wait(0.015)
+        if not _G.AutoRaid_Enabled then 
+            currentRaidTarget = nil
+            voidMotionOrigin = nil
+            continue 
+        end
+
+        local hrp = getHrp()
+        if not hrp or not hrp.Parent then 
+            currentRaidTarget = nil
+            continue 
+        end
+
+        if currentRaidTarget then
+            local targetChar = currentRaidTarget.Parent
+            if not targetChar or not targetChar.Parent or not targetChar:FindFirstChild("Humanoid") or targetChar.Humanoid.Health <= 0 then
+                currentRaidTarget = nil; _cachedHrpAddr = nil; voidMotionOrigin = nil
+            end
+        end
+
+        if not currentRaidTarget then
+            local nearest = nil
+            local minDistSq = 999999
+            local live = workspace:FindFirstChild("Live")
+            if live then
+                local children = live:GetChildren()
+                for i = 1, #children do
+                    local obj = children[i]
+                    -- Só NPCs que começam com ponto e não são inocentes
+                    if obj.Name:sub(1,1) == "." and not isInnocent(obj) then
+                        local hum = obj:FindFirstChild("Humanoid")
+                        local raidHrp = obj:FindFirstChild("HumanoidRootPart")
+                        if hum and hum.Health > 0 and raidHrp then
+                            local p1 = hrp.Position
+                            local p2 = raidHrp.Position
+                            local dx, dy, dz = p1.X - p2.X, p1.Y - p2.Y, p1.Z - p2.Z
+                            local distSq = (dx * dx) + (dy * dy) + (dz * dz)
+                            
+                            if distSq < minDistSq then
+                                minDistSq = distSq
+                                nearest = raidHrp
+                            end
+                        end
+                    end
+                end
+            end
+            currentRaidTarget = nearest
+        end
+
+        if currentRaidTarget then
+            local obj = currentRaidTarget.Parent
+            local nameLower = obj.Name:lower()
+            local isBoss = false
+            for _, bossData in ipairs(optimizedBosses) do
+                if nameLower == bossData.original:lower() then isBoss = true; break end
+            end
+
+            if isBoss then
+                if not voidMotionOrigin then voidMotionOrigin = hrp.Position end
+                local angle = os.clock() * (voidMoveSpeed / voidMoveRange)
+                local ox = math.cos(angle) * voidMoveRange
+                local oz = math.sin(angle) * voidMoveRange
+                hrp.Position = Vector3.new(voidMotionOrigin.X + ox, voidKeepY, voidMotionOrigin.Z + oz)
+            else
+                voidMotionOrigin = nil
+                trackTarget(hrp, currentRaidTarget, heightOffset, xOffset)
+            end
+        end
+    end
+end)
+
+task.spawn(function()
+    while true do
+        task.wait(0.1)
+        if not _G.AutoAttack_Enabled then continue end
+        if not isSpawned() then task.wait(1); continue end
+        if Win._open then continue end
+        mouse1press()
+        task.wait(0.1)
+        mouse1release()
+    end
+end)
+
+task.spawn(function()
+    while true do
+        task.wait(0.5)
+        if not _G.AutoStand_Enabled then continue end
+        if not isSpawned() then task.wait(1); continue end
+        local lp = game.Players.LocalPlayer
+        if not lp then task.wait(1); continue end
+        local live = game.Workspace:FindFirstChild("Live")
+        if not live then task.wait(1); continue end
+        local charModel = live:FindFirstChild(lp.Name)
+        if not charModel then task.wait(1); continue end
+        local val = charModel:GetAttribute("SummonedStand") or ""
+        if type(val) ~= "string" then val = tostring(val) end
+        if #val < 2 then
+            keypress(0x09); task.wait(0.1); keyrelease(0x09)
+            task.wait(1) -- espera o atributo atualizar antes de checar de novo
+        end
+    end
+end)
+
+local meditateArenaFallback = Vector3.new(1075.60, 884.34, 89.38)
+local function clickFirstChoice()
+    if not pos_meditate then return end
+    mousemoveabs(pos_meditate.x, pos_meditate.y); task.wait(0.05)
+    for i = 1, 4 do
+        local jx, jy = ((i % 2 == 0) and 2 or -2), ((i % 2 == 0) and 1 or -1)
+        mousemoveabs(pos_meditate.x + jx, pos_meditate.y + jy); task.wait(0.03)
+    end
+    mousemoveabs(pos_meditate.x, pos_meditate.y); task.wait(0.05)
+    mouse1press(); task.wait(0.08); mouse1release()
+end
+
+task.spawn(function()
+    while true do
+        task.wait(0.1)
+        if not _G.AutoMeditate_Enabled then continue end
+        if not isSpawned() then meditateTarget = nil; task.wait(1); continue end
+        local hrp = getHrp()
+        if not hrp then continue end
+
+        if meditateTarget and not meditateTarget.Parent then meditateTarget = nil end
+        if not meditateTarget then meditateTarget = findMeditateClone() end
+
+        if not meditateTarget then
+            local theSelf = game.Workspace:FindFirstChild("Npcs") and game.Workspace.Npcs:FindFirstChild("The Self")
+            local selfHrp = theSelf and (theSelf:FindFirstChild("HumanoidRootPart") or theSelf.PrimaryPart)
+
+            if selfHrp then
+                local selfPos = selfHrp.Position + Vector3.new(0, 3, 0)
+                local t0 = os.clock()
+                while os.clock() - t0 < 0.5 and _G.AutoMeditate_Enabled do
+                    hrp.Position = selfPos
+                    pcall(function() hrp.AssemblyLinearVelocity = Vector3.new(0,0,0) end)
+                    task.wait(0.015)
+                end
+                keypress(69); task.wait(3); keyrelease(69)
+                task.wait(0.3)
+                clickFirstChoice()
+                task.wait(1)
+                meditateTarget = findMeditateClone()
+            else
+                -- fallback: ponto fixo da arena
+                local t0 = os.clock()
+                while os.clock() - t0 < 0.5 and _G.AutoMeditate_Enabled do
+                    hrp.Position = meditateArenaFallback
+                    pcall(function() hrp.AssemblyLinearVelocity = Vector3.new(0,0,0) end)
+                    task.wait(0.015)
+                end
+                keypress(69); task.wait(3); keyrelease(69)
+                task.wait(3)
+            end
+            continue
+        end
+
+        -- tem clone: trackTarget igual mob/raid
+        local cloneHrp = meditateTarget:FindFirstChild("HumanoidRootPart")
+        if cloneHrp then
+            trackTarget(hrp, cloneHrp, heightOffset, xOffset)
+        else
+            meditateTarget = nil
+        end
+    end
+end)
+
+task.spawn(function()
+    while true do
+        task.wait(1)
+        if not _G.AutoPlay_Enabled then continue end
+        if isSpawned() then continue end
+        if Win._open then continue end
+
+        local lp = game.Players.LocalPlayer
+        if not lp then task.wait(1); continue end
+        local playerGui = lp:FindFirstChild("PlayerGui")
+        if not playerGui then continue end
+
+        local mainMenu = playerGui:FindFirstChild("Main Menu")
+        local buttons  = mainMenu and mainMenu:FindFirstChild("Buttons")
+        local playBtn  = buttons and buttons:FindFirstChild("Quick Play")
+
+        if playBtn then
+            task.wait(2)
+            local targetX, targetY
+            if pos_play then
+                targetX, targetY = pos_play.x, pos_play.y
+            else
+                local okPos, pos = pcall(function() return playBtn.AbsolutePosition end)
+                local okSize, size = pcall(function() return playBtn.AbsoluteSize end)
+                if not (okPos and okSize) then continue end
+                targetX = pos.X + (size.X / 2)
+                targetY = pos.Y + (size.Y / 10) + 36
+            end
+
+            mousemoveabs(targetX, targetY); task.wait(0.05)
+            for i = 1, 4 do
+                local jx = (i % 2 == 0) and 2 or -2
+                local jy = (i % 2 == 0) and 1 or -1
+                mousemoveabs(targetX + jx, targetY + jy); task.wait(0.03)
+            end
+            mousemoveabs(targetX, targetY); task.wait(0.05)
+            mouse1press(); task.wait(0.08); mouse1release()
+            _G.AutoPlay_Enabled = false
+        end
+    end
+end)
+
+task.spawn(function()
+    while true do
+        task.wait(1)
+        if not _G.AutoReplay_Enabled then continue end
+        
+        -- [NOVO] Suspende se a interface da GalaxLib está visível na tela
+        if Win._open then continue end
+        
+        local lp = game.Players.LocalPlayer
+        if not lp then task.wait(1); continue end
+        local playerGui = lp:FindFirstChild("PlayerGui")
+        if not playerGui then continue end
+
+        local raidcomplete = playerGui:FindFirstChild("raidcomplete")
+        local raid = raidcomplete and raidcomplete:FindFirstChild("raid")
+        local retryBtn = raid and raid:FindFirstChild("retry")
+
+        if retryBtn then
+            local targetX, targetY
+            if pos_replay then
+                targetX, targetY = pos_replay.x, pos_replay.y
+            else
+                local okPos, pos = pcall(function() return retryBtn.AbsolutePosition end)
+                local okSize, size = pcall(function() return retryBtn.AbsoluteSize end)
+                if not (okPos and okSize) then continue end
+                targetX = pos.X + (size.X / 2)
+                targetY = pos.Y + (size.Y / 2)
+            end
+
+            mousemoveabs(targetX, targetY); task.wait(0.05)
+            for i = 1, 4 do
+                local jx = (i % 2 == 0) and 2 or -2
+                local jy = (i % 2 == 0) and 1 or -1
+                mousemoveabs(targetX + jx, targetY + jy); task.wait(0.03)
+            end
+            mousemoveabs(targetX, targetY); task.wait(0.05)
+            mouse1press(); task.wait(0.08); mouse1release()
+            task.wait(4)
+        end
+    end
+end)
+
+task.spawn(function()
+    while true do
+        task.wait(0.015)
+        if not _G.AutoPvp_Enabled then continue end
+        if not isSpawned() then pvpTarget = nil; task.wait(1); continue end
+        if not selectedPvpPlayer then continue end
+        -- se já tem target válido, o loop unificado cuida do tp+rot
+        if pvpTarget and pvpTarget.Parent then continue end
+        pvpTarget = nil
+        local live = game.Workspace:FindFirstChild("Live")
+        if not live then continue end
+        for _, obj in ipairs(live:GetChildren()) do
+            if obj.Name == selectedPvpPlayer then
+                local targetHrp = obj:FindFirstChild("HumanoidRootPart")
+                if targetHrp then pvpTarget = targetHrp; break end
+            end
+        end
+    end
+end)
+
+
+
+-- ═══════════════════════════════════════════════════════════════
+--  BOOT — carrega config junto com o script
+--  Quando boneco entra no Live, re-dispara callbacks dos toggles ativos
+-- ═══════════════════════════════════════════════════════════════
+
+local function reFireActiveToggles()
+    for _, tab in ipairs(Win._tabs) do
+        if tab._isSettings or tab._isInfo then continue end
+        for _, sec in ipairs(tab._sections) do
+            for _, w in ipairs(sec._widgets) do
+                if w.type == "toggle" and w.value == true then
+                    pcall(w.cb, true)
+                end
+            end
+        end
+    end
+end
+
+task.spawn(function()
+    repeat task.wait(0.5) until game.Players.LocalPlayer
+    task.wait(0.5)
+    Win:LoadConfig(true, false)
+    Win:Notify("Config loaded!", "Bizarre Hub", 3)
+
+    -- Quando o boneco entrar no Live, re-dispara todos os toggles ativos
+    local wasSpawned = isSpawned()
+    while Win._running do
+        task.wait(0.5)
+        local spawned = isSpawned()
+        if spawned and not wasSpawned then
+            task.wait(0.5)
+            reFireActiveToggles()
+        end
+        wasSpawned = spawned
+    end
+end)
+
+Win:Notify("Bizarre Hub", "Whymayko", 3)
