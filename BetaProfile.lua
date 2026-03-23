@@ -35,7 +35,7 @@ GalaxHubWhitelist = {
     "gewoonjip013",
     "luvnotht",
     "ImLegitCuhAlt",
-    "test",
+    "Lacynx",
 
     -- Add more users below this line!
 }
