@@ -6,7 +6,127 @@
 
 -- ── 1. LIBS ──────────────────────────────────────────────────────
 loadstring(game:HttpGet("https://pastebin.com/raw/bghZmR8D"))()
-loadstring(game:HttpGet("https://raw.githubusercontent.com/minudoindo-dotcom/Galax/refs/heads/main/Lib/Beta/MatchaLib.lua"))()
+
+-- ── 2. OFFSETS (auto-fetch, fallback hardcoded) ──────────────────
+local _OFFSETS_URL = "https://imtheo.lol/Offsets/version-ae421f0582e54718/Offsets.json"
+local _O = {}
+do
+    local ok, raw = pcall(game.HttpGet, game, _OFFSETS_URL)
+    if ok and raw and #raw > 10 then
+        local jok, decoded = pcall(function()
+            return game:GetService("HttpService"):JSONDecode(raw)
+        end)
+        if jok and decoded and decoded.Offsets then _O = decoded.Offsets end
+    end
+end
+local primOffset = (_O.BasePart  and _O.BasePart.Primitive)  or 328
+local rotOffset  = (_O.Primitive and _O.Primitive.Rotation)   or 192
+
+-- ── 3. CORE: LookAt + TrackTarget + ESP ─────────────────────────
+local _cachedPrim    = nil
+local _cachedHrpAddr = nil
+
+local function getLookAtMatrix(fromPos, toPos)
+    local dx,dy,dz = toPos.X-fromPos.X, toPos.Y-fromPos.Y, toPos.Z-fromPos.Z
+    local zx,zy,zz = -dx,-dy,-dz
+    local zmag = math.sqrt(zx*zx+zy*zy+zz*zz)
+    if zmag == 0 then return {1,0,0,0,1,0,0,0,1} end
+    zx,zy,zz = zx/zmag,zy/zmag,zz/zmag
+    local ux,uy,uz = 0,1,0
+    if math.abs(zy) > 0.9999 then ux,uy,uz=0,0,1 end
+    local xx,xy,xz = uy*zz-uz*zy, uz*zx-ux*zz, ux*zy-uy*zx
+    local xmag = math.sqrt(xx*xx+xy*xy+xz*xz)
+    xx,xy,xz = xx/xmag,xy/xmag,xz/xmag
+    local yx,yy,yz = zy*xz-zz*xy, zz*xx-zx*xz, zx*xy-zy*xx
+    return {xx,yx,zx,xy,yy,zy,xz,yz,zz}
+end
+
+local function applyLookAt(hrp, targetPos)
+    local flat = Vector3.new(targetPos.X, hrp.Position.Y, targetPos.Z)
+    pcall(function() hrp.CFrame = CFrame.lookAt(hrp.Position, flat) end)
+    local addr = tonumber(hrp.Address)
+    if not addr or addr == 0 then return end
+    if addr ~= _cachedHrpAddr then
+        local prim = memory_read("uintptr_t", addr + primOffset)
+        if not prim or prim == 0 then return end
+        _cachedPrim = prim; _cachedHrpAddr = addr
+    end
+    local mat  = getLookAtMatrix(hrp.Position, targetPos)
+    local base = _cachedPrim + rotOffset
+    for i = 0, 8 do memory_write("float", base + i*4, mat[i+1]) end
+end
+
+-- ESP helpers
+local function _newEspLine(col)
+    local l = Drawing.new("Line"); l.Color=col or Color3.new(1,1,1); l.Thickness=1.5; l.Visible=false; return l
+end
+local function _newEspText(col, sz)
+    local t = Drawing.new("Text")
+    t.Font=Drawing.Fonts.UI; t.Size=sz or 13
+    t.Color=col or Color3.new(1,1,1); t.Outline=true; t.Center=true; t.ZIndex=10; t.Visible=false; return t
+end
+local function _newCornerBox(col)
+    local lines={}; for i=1,8 do lines[i]=_newEspLine(col) end; return lines
+end
+local function _drawCornerBox(lines, x, y, hw, hh, len, col)
+    for _,l in ipairs(lines) do l.Color=col end
+    lines[1].From=Vector2.new(x-hw,y-hh); lines[1].To=Vector2.new(x-hw+len,y-hh)
+    lines[2].From=Vector2.new(x-hw,y-hh); lines[2].To=Vector2.new(x-hw,y-hh+len)
+    lines[3].From=Vector2.new(x+hw,y-hh); lines[3].To=Vector2.new(x+hw-len,y-hh)
+    lines[4].From=Vector2.new(x+hw,y-hh); lines[4].To=Vector2.new(x+hw,y-hh+len)
+    lines[5].From=Vector2.new(x+hw,y+hh); lines[5].To=Vector2.new(x+hw-len,y+hh)
+    lines[6].From=Vector2.new(x+hw,y+hh); lines[6].To=Vector2.new(x+hw,y+hh-len)
+    lines[7].From=Vector2.new(x-hw,y+hh); lines[7].To=Vector2.new(x-hw+len,y+hh)
+    lines[8].From=Vector2.new(x-hw,y+hh); lines[8].To=Vector2.new(x-hw,y+hh-len)
+    for _,l in ipairs(lines) do l.Visible=true end
+end
+local function _hideCornerBox(lines) for _,l in ipairs(lines) do l.Visible=false end end
+
+local ESP = {}
+function ESP.Create(part, cfg)
+    cfg = cfg or {}
+    local col = cfg.color or Color3.fromRGB(255,215,0)
+    return { part=part, cfg=cfg, box=_newCornerBox(col), label=_newEspText(col,13), distLabel=_newEspText(Color3.new(1,1,1),13), tracer=_newEspLine(col) }
+end
+function ESP.Update(esp, myPos)
+    local part=esp.part; local cfg=esp.cfg
+    if not part or not part.Parent then ESP.Hide(esp); return false end
+    local col=cfg.color or Color3.fromRGB(255,215,0)
+    local tp=part.Position
+    local d=tp-myPos; local dist=math.floor(math.sqrt(d.X^2+d.Y^2+d.Z^2))
+    local pos, onScreen = WorldToScreen(tp)
+    if not pos or not onScreen then ESP.Hide(esp); return false end
+    local x,y=pos.X,pos.Y; local hw,hh=cfg.hw or 22,cfg.hh or 22
+    if cfg.box then _drawCornerBox(esp.box,x,y,hw,hh,8,col) else _hideCornerBox(esp.box) end
+    local distStr="["..dist.."m]"; local topY=y-hh-14; local label=cfg.nameText or (part.Name or "?")
+    if cfg.name then
+        local GAP=10; local nameW=#label*6; local dW=cfg.distance and (#distStr*6) or 0
+        local totalW=nameW+(cfg.distance and GAP or 0)+dW
+        esp.label.Text=label; esp.label.Color=col
+        esp.label.Position=Vector2.new(x-totalW/2+nameW/2,topY); esp.label.Visible=true
+        if cfg.distance then
+            esp.distLabel.Text=" "..distStr
+            esp.distLabel.Position=Vector2.new(x-totalW/2+nameW+GAP+dW/2,topY); esp.distLabel.Visible=true
+        else esp.distLabel.Visible=false end
+    else
+        esp.label.Visible=false
+        if cfg.distance then esp.distLabel.Text=distStr; esp.distLabel.Position=Vector2.new(x,topY); esp.distLabel.Visible=true
+        else esp.distLabel.Visible=false end
+    end
+    if cfg.line then
+        local scr=workspace.CurrentCamera.ViewportSize
+        esp.tracer.From=Vector2.new(scr.X/2,scr.Y); esp.tracer.To=Vector2.new(x,y)
+        esp.tracer.Color=col; esp.tracer.Visible=true
+    else esp.tracer.Visible=false end
+    return true
+end
+function ESP.Hide(esp)
+    _hideCornerBox(esp.box); esp.label.Visible=false; esp.distLabel.Visible=false; esp.tracer.Visible=false
+end
+function ESP.Destroy(esp)
+    for _,l in ipairs(esp.box) do l:Remove() end
+    esp.label:Remove(); esp.distLabel:Remove(); esp.tracer:Remove()
+end
 
 -- ── 3. WINDOW ────────────────────────────────────────────────────
 local Win = GalaxLib:CreateWindow({
@@ -158,7 +278,7 @@ _G.AutoPvp_Enabled       = false
 _G.AutoPlay_Enabled      = false
 _G.AutoReplay_Enabled    = false
 
-local _cachedHrpAddr = nil  -- shim: cache real e interno na MatchaLib, esta var e usada apenas para resets locais
+local _cachedHrpAddr = nil
 local _savedAnimator     = nil
 local _savedAnimParent   = nil
 local _savedAnimrParent  = nil
@@ -180,14 +300,32 @@ local function updateOffset()
 end
 
 -- ════════════════════════════════════════════════════════════════
---  6. HELPERS (via MatchaLib onde possível)
+--  6. HELPERS
 -- ════════════════════════════════════════════════════════════════
 
--- Aliases curtos para uso interno
-local function getHrp()       return MatchaLib.GetMyHRP() end
-local function applyRot(h,t)  return MatchaLib.LookAt(h,t) end
+local function getHrp()
+    local lp = game.Players.LocalPlayer
+    if not lp then return nil end -- Se você saiu do jogo
+    local live = workspace:FindFirstChild("Live")
+    if live then
+        local char = live:FindFirstChild(lp.Name)
+        if char and char.Parent then 
+            return char:FindFirstChild("HumanoidRootPart") 
+        end
+    end
+    return nil -- Se você morreu ou ainda não deu spawn
+end
+
 local function trackTarget(hrp, targetHrp, yOff, xOff)
-    return MatchaLib.TrackTarget(hrp, targetHrp, yOff, xOff)
+    local tx,tz = targetHrp.Position.X, targetHrp.Position.Z
+    local dx,dz = tx-hrp.Position.X, tz-hrp.Position.Z
+    local len   = math.sqrt(dx*dx+dz*dz)
+    local bx,bz = 0,0
+    if len > 0.01 and xOff and xOff ~= 0 then
+        bx = -(dx/len)*xOff; bz = -(dz/len)*xOff
+    end
+    hrp.Position = Vector3.new(tx+bx, targetHrp.Position.Y+(yOff or 0), tz+bz)
+    applyLookAt(hrp, targetHrp.Position)
 end
 
 local function isInnocent(obj)
@@ -209,14 +347,14 @@ local function findNpc(name)
     local function searchIn(folder)
         if not folder then return nil end
         for _, obj in ipairs(folder:GetChildren()) do
-            if obj:IsA("Model") then
-                local ok, dn = pcall(function() return obj:GetAttribute("DisplayName") end)
-                if ok and dn == name then return obj:FindFirstChild("HumanoidRootPart") or obj.PrimaryPart end
-                if obj.Name == name then return obj:FindFirstChild("HumanoidRootPart") or obj.PrimaryPart end
+            local ok, dn = pcall(function() return obj:GetAttribute("DisplayName") end)
+            if (ok and dn == name) or obj.Name == name then 
+                return obj:FindFirstChild("HumanoidRootPart") or obj.PrimaryPart 
             end
         end
         return nil
     end
+
     return searchIn(game.Workspace:FindFirstChild("Npcs"))
         or searchIn(game.ReplicatedStorage:FindFirstChild("assets") and game.ReplicatedStorage.assets:FindFirstChild("npc_cache"))
 end
@@ -285,9 +423,19 @@ local function getPveQuestType()
     return nil
 end
 
-local function pveTeleport(pos) MatchaLib.TeleportTo(getHrp(), pos) end
-local function pveDist(a, b)   return MatchaLib.Dist(a, b) end
-local function getPlayerSet()  return MatchaLib.GetPlayerSet() end
+local function pveTeleport(pos)
+    local hrp = getHrp()
+    if hrp then pcall(function() hrp.Position = pos end) end
+end
+local function pveDist(a, b)
+    local d = a - b
+    return math.sqrt(d.X^2 + d.Y^2 + d.Z^2)
+end
+local function getPlayerSet()
+    local set = {}
+    for _, p in ipairs(game.Players:GetPlayers()) do set[p.Name] = true end
+    return set
+end
 
 local function autoPveLoop()
     local QUEST_GIVER_POS = Vector3.new(701.67, 894.56, -221.74)
@@ -411,7 +559,7 @@ EspSec:AddToggle("Enable ESP", false, function(v)
     _G.ESP_Enabled = v
     if not v then
         for item, esp in pairs(activeESP) do
-            MatchaLib.ESP.Destroy(esp)
+            ESP.Destroy(esp)
         end
         activeESP = {}
     end
@@ -421,7 +569,7 @@ EspSec:AddToggle("Name",      true,  function(v) _espCFG.name      = v end)
 EspSec:AddToggle("Distance",  true,  function(v) _espCFG.distance  = v end)
 EspSec:AddToggle("Traceline", false, function(v) _espCFG.traceline = v end)
 EspSec:AddDropdown("ESP FPS", {"30","60","120","240"}, "30", function(v)
-    _espCFG.renderWait = 1 / tonumber(v)
+    _espCFG.renderWait = math.max(1 / tonumber(v), 0.015)
 end)
 
 local PlayerEspSec = VisualsTab:AddSection("Player ESP")
@@ -482,7 +630,8 @@ task.spawn(function()
                 else b.name.Visible=false end
                 local distY = sp.Y + (_playerESP.showName and 16 or 0)
                 if _playerESP.showDist and myPos then
-                    local d = math.floor(MatchaLib.Dist(hrp.Position, myPos))
+                    local dp = hrp.Position - myPos
+                    local d = math.floor(math.sqrt(dp.X^2+dp.Y^2+dp.Z^2))
                     b.dist.Text="["..d.."m]"; b.dist.Color=Color3.fromRGB(200,200,200)
                     b.dist.Position=Vector2.new(sp.X, distY); b.dist.Visible=true
                     distY = distY + 16
@@ -516,8 +665,8 @@ local function scanLiveMobs()
     local playerSet = {}
     for _, p in ipairs(game.Players:GetPlayers()) do playerSet[p.Name] = true end
     for _, obj in ipairs(live:GetChildren()) do
-        if obj:IsA("Model") and obj.Name ~= "Server" and not playerSet[obj.Name] then
-            local humanoid = obj:FindFirstChildOfClass("Humanoid")
+        if obj.Name ~= "Server" and not playerSet[obj.Name] then
+            local humanoid = obj:FindFirstChild("Humanoid")
             if humanoid and humanoid.Health > 0 then
                 local ok, dn = pcall(function() return obj:GetAttribute("DisplayName") end)
                 local label = (ok and type(dn)=="string" and dn~="") and dn or obj.Name
@@ -587,9 +736,9 @@ AutoSec:AddToggle("Freeze Animations", false, function(v)
     if v then
         local animate = char:FindFirstChild("Animate")
         if animate then _savedAnimate=animate; _savedAnimParent=animate.Parent; animate.Parent=game end
-        local humanoid = char:FindFirstChildOfClass("Humanoid")
+        local humanoid = char:FindFirstChild("Humanoid")
         if humanoid then
-            local animator = humanoid:FindFirstChildOfClass("Animator")
+            local animator = humanoid:FindFirstChild("Animator")
             if animator then _savedAnimator=animator; _savedAnimrParent=animator.Parent; animator.Parent=game end
         end
     else
@@ -816,7 +965,7 @@ local UserIdSec    = RageTab:AddSection("User ID")
 local spoofedUserId = nil
 task.spawn(function()
     while true do
-        task.wait()
+        task.wait(0.015)
         if spoofedUserId then
             pcall(function()
                 local label=game.Players.LocalPlayer.PlayerGui.MainHud.topsection.second.userid
@@ -1080,7 +1229,7 @@ autoRollToggleRef = rollToggle
 
 -- ── ESP visual config ────────────────────────────────────────────
 
--- SCAN: cria ESP via MatchaLib para novos itens
+-- SCAN: cria ESP para novos itens
 task.spawn(function()
     while true do
         if _G.ESP_Enabled then
@@ -1088,7 +1237,7 @@ task.spawn(function()
                 if model.Name == "Model" then
                     for _, obj in ipairs(model:GetChildren()) do
                         if targetNames[obj.Name] and not activeESP[obj] then
-                            activeESP[obj] = MatchaLib.ESP.Create(obj, {
+                            activeESP[obj] = ESP.Create(obj, {
                                 box      = _espCFG.box,
                                 name     = _espCFG.name,
                                 distance = _espCFG.distance,
@@ -1104,26 +1253,25 @@ task.spawn(function()
     end
 end)
 
--- RENDER: usa MatchaLib.ESP.Update por item
+-- RENDER
 task.spawn(function()
     while true do
         task.wait(_espCFG.renderWait)
         if not _G.ESP_Enabled then
-            for _, esp in pairs(activeESP) do MatchaLib.ESP.Hide(esp) end
+            for _, esp in pairs(activeESP) do ESP.Hide(esp) end
             continue
         end
         local myPos = getHrp() and getHrp().Position
         if not myPos then continue end
         for item, esp in pairs(activeESP) do
             if not item or not item.Parent then
-                MatchaLib.ESP.Destroy(esp); activeESP[item] = nil; continue
+                ESP.Destroy(esp); activeESP[item] = nil; continue
             end
-            -- sincroniza cfg com toggles
             esp.cfg.box      = _espCFG.box
             esp.cfg.name     = _espCFG.name
             esp.cfg.distance = _espCFG.distance
             esp.cfg.line     = _espCFG.traceline
-            MatchaLib.ESP.Update(esp, myPos)
+            ESP.Update(esp, myPos)
         end
     end
 end)
@@ -1206,7 +1354,7 @@ task.spawn(function()
                         hrp.Position = obj.Position + Vector3.new(0, yOff, 0)
                         pcall(function() hrp.AssemblyLinearVelocity = Vector3.new(0,0,0) end)
                     end
-                    task.wait()
+                    task.wait(0.015)
                 end
                 keyrelease(69)
                 task.wait(0.3)
@@ -1247,7 +1395,7 @@ end)
 -- ── Safe Place via task.wait ─────────────────────────────────
 task.spawn(function()
     while true do
-        task.wait()
+        task.wait(0.015)
         if not _G.SafePlace_Enabled then continue end
         if not isSpawned() then continue end
         if _G.AutoFarmWorking then continue end
@@ -1262,7 +1410,7 @@ end)
 -- Loop de tp unificado
 task.spawn(function()
     while true do
-        task.wait()
+        task.wait(0.015)
         if not isSpawned() then continue end
         local hrp = getHrp()
         if not hrp then continue end
@@ -1298,121 +1446,137 @@ end)
 
 task.spawn(function()
     while true do
-        task.wait()
-        if not _G.AutoMob_Enabled then continue end
-        if not isSpawned() then task.wait(1); continue end
+        task.wait(0.015)
+        if not _G.AutoMob_Enabled then 
+            currentMobTarget = nil 
+            continue 
+        end
+        
         local hrp = getHrp()
-        if not hrp then continue end
-
-        -- trava no target atual enquanto ele ainda estiver vivo
-        if currentMobTarget and currentMobTarget.Parent then
-            local hum = currentMobTarget.Parent:FindFirstChildOfClass("Humanoid")
-            if hum and hum.Health > 0 then continue end
-            currentMobTarget = nil; _cachedHrpAddr = nil
+        if not hrp or not hrp.Parent then 
+            currentMobTarget = nil
+            continue 
         end
 
-        currentMobTarget = nil
-        local nearest = nil; local minDistSq = math.huge
-        local playerSet = {}
-        for _, p in ipairs(game.Players:GetPlayers()) do playerSet[p.Name] = true end
+        -- Validação do alvo atual
+        if currentMobTarget then
+            local tarPart = currentMobTarget.Parent
+            if not tarPart or not tarPart.Parent or not tarPart:FindFirstChild("Humanoid") or tarPart.Humanoid.Health <= 0 then
+                currentMobTarget = nil
+                _cachedHrpAddr = nil
+            end
+        end
 
-        for _, obj in ipairs(game.Workspace.Live:GetChildren()) do
-            if obj:IsA("Model") and obj.Name ~= "Server" and not playerSet[obj.Name] then
-                local hum = obj:FindFirstChildOfClass("Humanoid")
-                if not hum or hum.Health <= 0 then continue end
-                local ok, dn = pcall(function() return obj:GetAttribute("DisplayName") end)
-                local label = (ok and type(dn) == "string" and dn ~= "") and dn or obj.Name
-                if label:sub(1,1) == "." and #label > 7 then label = label:sub(2, -7) end
-                if selectedMobs[label] == true then
-                    local mobHrp = obj:FindFirstChild("HumanoidRootPart")
-                    if mobHrp then
-                        local dx = hrp.Position.X - mobHrp.Position.X
-                        local dy = hrp.Position.Y - mobHrp.Position.Y
-                        local dz = hrp.Position.Z - mobHrp.Position.Z
-                        local dSq = dx*dx + dy*dy + dz*dz
-                        if dSq < minDistSq then minDistSq = dSq; nearest = mobHrp end
+        -- Busca novo alvo (Cálculo manual compatível com Matcha)
+        if not currentMobTarget then
+            local nearest = nil
+            local minDistSq = 999999
+            local live = workspace:FindFirstChild("Live")
+            if live then
+                local children = live:GetChildren()
+                for i = 1, #children do
+                    local obj = children[i]
+                    local rawName = obj.Name
+                    -- Lógica do ponto "." e limpeza de nome
+                    if rawName:sub(1,1) == "." and #rawName > 7 then
+                        local label = rawName:sub(2, -7)
+                        if selectedMobs[label] then
+                            local hum = obj:FindFirstChild("Humanoid")
+                            local mobHrp = obj:FindFirstChild("HumanoidRootPart")
+                            if hum and hum.Health > 0 and mobHrp then
+                                -- CÁLCULO MANUAL X, Y, Z (Proteção contra Nil)
+                                local p1 = hrp.Position
+                                local p2 = mobHrp.Position
+                                local dx, dy, dz = p1.X - p2.X, p1.Y - p2.Y, p1.Z - p2.Z
+                                local distSq = (dx * dx) + (dy * dy) + (dz * dz)
+                                
+                                if distSq < minDistSq then 
+                                    minDistSq = distSq
+                                    nearest = mobHrp 
+                                end
+                            end
+                        end
                     end
                 end
             end
+            currentMobTarget = nearest
         end
-        if nearest then currentMobTarget = nearest end
+
+        if currentMobTarget then
+            trackTarget(hrp, currentMobTarget, heightOffset, xOffset)
+        end
     end
 end)
 
 task.spawn(function()
     while true do
-        task.wait()
-        if not _G.AutoRaid_Enabled then continue end
-        if not isSpawned() then task.wait(1); continue end
+        task.wait(0.015)
+        if not _G.AutoRaid_Enabled then 
+            currentRaidTarget = nil
+            voidMotionOrigin = nil
+            continue 
+        end
+
         local hrp = getHrp()
-        if not hrp then continue end
-        if not savedPosRaid then savedPosRaid = hrp.Position end
-
-        -- trava no target atual enquanto ele ainda estiver vivo
-        if currentRaidTarget and currentRaidTarget.Parent then
-            local hum = currentRaidTarget.Parent:FindFirstChildOfClass("Humanoid")
-            if hum and hum.Health > 0 then
-                task.wait(0.05)
-                continue
-            end
-            currentRaidTarget = nil; _cachedHrpAddr = nil; voidMotionOrigin = nil
+        if not hrp or not hrp.Parent then 
+            currentRaidTarget = nil
+            continue 
         end
 
-        local nearest = nil; local minDistSq = math.huge
+        if currentRaidTarget then
+            local targetChar = currentRaidTarget.Parent
+            if not targetChar or not targetChar.Parent or not targetChar:FindFirstChild("Humanoid") or targetChar.Humanoid.Health <= 0 then
+                currentRaidTarget = nil; _cachedHrpAddr = nil; voidMotionOrigin = nil
+            end
+        end
 
-        for _, obj in ipairs(game.Workspace.Live:GetChildren()) do
-            if obj:IsA("Model") and obj.Name ~= "Server" then
-                local humanoid = obj:FindFirstChildOfClass("Humanoid")
-                if not humanoid or humanoid.Health <= 0 then continue end
-                if game.Players:FindFirstChild(obj.Name) then continue end
-                if isInnocent(obj) then continue end
-                local raidHrp = obj:FindFirstChild("HumanoidRootPart")
-                if raidHrp then
-                    local dx = hrp.Position.X - raidHrp.Position.X
-                    local dy = hrp.Position.Y - raidHrp.Position.Y
-                    local dz = hrp.Position.Z - raidHrp.Position.Z
-                    local dSq = dx*dx + dy*dy + dz*dz
-                    if dSq < minDistSq then minDistSq = dSq; nearest = raidHrp end
+        if not currentRaidTarget then
+            local nearest = nil
+            local minDistSq = 999999
+            local live = workspace:FindFirstChild("Live")
+            if live then
+                local children = live:GetChildren()
+                for i = 1, #children do
+                    local obj = children[i]
+                    -- Só NPCs que começam com ponto e não são inocentes
+                    if obj.Name:sub(1,1) == "." and not isInnocent(obj) then
+                        local hum = obj:FindFirstChild("Humanoid")
+                        local raidHrp = obj:FindFirstChild("HumanoidRootPart")
+                        if hum and hum.Health > 0 and raidHrp then
+                            local p1 = hrp.Position
+                            local p2 = raidHrp.Position
+                            local dx, dy, dz = p1.X - p2.X, p1.Y - p2.Y, p1.Z - p2.Z
+                            local distSq = (dx * dx) + (dy * dy) + (dz * dz)
+                            
+                            if distSq < minDistSq then
+                                minDistSq = distSq
+                                nearest = raidHrp
+                            end
+                        end
+                    end
                 end
             end
+            currentRaidTarget = nearest
         end
 
-        if nearest then
-            local obj = nearest.Parent
-            if not obj or not obj.Parent then continue end
-
-            -- verifica se é boss (void kill)
-            local matchedBoss = false
-            local ok, dn = pcall(function() return obj:GetAttribute("DisplayName") end)
-            local modelNameLower = obj.Name and obj.Name:lower() or ""
+        if currentRaidTarget then
+            local obj = currentRaidTarget.Parent
+            local nameLower = obj.Name:lower()
+            local isBoss = false
             for _, bossData in ipairs(optimizedBosses) do
-                if ok and dn and dn:lower() == bossData.original:lower() then matchedBoss = true; break end
-                if modelNameLower == bossData.original:lower() then matchedBoss = true; break end
-                local allMatch = true
-                for _, word in ipairs(bossData.words) do
-                    if not modelNameLower:find(word, 1, true) then allMatch = false; break end
-                end
-                if allMatch then matchedBoss = true; break end
+                if nameLower == bossData.original:lower() then isBoss = true; break end
             end
 
-            if matchedBoss then
-                currentRaidTarget = nil
-                if not voidMotionOrigin then
-                    voidMotionOrigin = Vector3.new(hrp.Position.X, voidKeepY, hrp.Position.Z)
-                end
+            if isBoss then
+                if not voidMotionOrigin then voidMotionOrigin = hrp.Position end
                 local angle = os.clock() * (voidMoveSpeed / voidMoveRange)
                 local ox = math.cos(angle) * voidMoveRange
                 local oz = math.sin(angle) * voidMoveRange
                 hrp.Position = Vector3.new(voidMotionOrigin.X + ox, voidKeepY, voidMotionOrigin.Z + oz)
-                pcall(function() hrp.AssemblyLinearVelocity = Vector3.new(0,0,0) end)
             else
-                -- NPC normal: trava aqui até morrer
-                currentRaidTarget = nearest
-                voidMotionOrigin  = nil
+                voidMotionOrigin = nil
+                trackTarget(hrp, currentRaidTarget, heightOffset, xOffset)
             end
-        else
-            currentRaidTarget = nil
-            hrp.Position = savedPosRaid
         end
     end
 end)
@@ -1482,7 +1646,7 @@ task.spawn(function()
                 while os.clock() - t0 < 0.5 and _G.AutoMeditate_Enabled do
                     hrp.Position = selfPos
                     pcall(function() hrp.AssemblyLinearVelocity = Vector3.new(0,0,0) end)
-                    task.wait()
+                    task.wait(0.015)
                 end
                 keypress(69); task.wait(3); keyrelease(69)
                 task.wait(0.3)
@@ -1495,7 +1659,7 @@ task.spawn(function()
                 while os.clock() - t0 < 0.5 and _G.AutoMeditate_Enabled do
                     hrp.Position = meditateArenaFallback
                     pcall(function() hrp.AssemblyLinearVelocity = Vector3.new(0,0,0) end)
-                    task.wait()
+                    task.wait(0.015)
                 end
                 keypress(69); task.wait(3); keyrelease(69)
                 task.wait(3)
@@ -1599,7 +1763,7 @@ end)
 
 task.spawn(function()
     while true do
-        task.wait()
+        task.wait(0.015)
         if not _G.AutoPvp_Enabled then continue end
         if not isSpawned() then pvpTarget = nil; task.wait(1); continue end
         if not selectedPvpPlayer then continue end
@@ -1609,7 +1773,7 @@ task.spawn(function()
         local live = game.Workspace:FindFirstChild("Live")
         if not live then continue end
         for _, obj in ipairs(live:GetChildren()) do
-            if obj.Name == selectedPvpPlayer and obj:IsA("Model") then
+            if obj.Name == selectedPvpPlayer then
                 local targetHrp = obj:FindFirstChild("HumanoidRootPart")
                 if targetHrp then pvpTarget = targetHrp; break end
             end
