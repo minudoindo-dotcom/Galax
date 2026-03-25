@@ -7,20 +7,10 @@
 -- ── 1. LIBS ──────────────────────────────────────────────────────
 loadstring(game:HttpGet("https://pastebin.com/raw/bghZmR8D"))()
 
--- ── 2. OFFSETS (auto-fetch, fallback hardcoded) ──────────────────
-local _OFFSETS_URL = "https://imtheo.lol/Offsets/version-ae421f0582e54718/Offsets.json"
-local _O = {}
-do
-    local ok, raw = pcall(game.HttpGet, game, _OFFSETS_URL)
-    if ok and raw and #raw > 10 then
-        local jok, decoded = pcall(function()
-            return game:GetService("HttpService"):JSONDecode(raw)
-        end)
-        if jok and decoded and decoded.Offsets then _O = decoded.Offsets end
-    end
-end
-local primOffset = (_O.BasePart  and _O.BasePart.Primitive)  or 328
-local rotOffset  = (_O.Primitive and _O.Primitive.Rotation)   or 192
+-- ── 2. OFFSETS  ──────────────────────────────────────────────────
+
+local primOffset = 0x148
+local rotOffset  = 0xc0
 
 -- ── 3. CORE: LookAt + TrackTarget + ESP ─────────────────────────
 local _cachedPrim    = nil
@@ -237,6 +227,7 @@ local voidKeepY        = -410
 local voidMoveRange    = 100
 local voidMoveSpeed    = 520
 local voidMotionOrigin = nil
+local _jotaroVoidActive = false
 
 -- ════════════════════════════════════════════════════════════════
 --  5. STATE
@@ -1423,8 +1414,16 @@ task.spawn(function()
         elseif _G.AutoRaid_Enabled and currentRaidTarget then
             if not currentRaidTarget.Parent then
                 currentRaidTarget = nil; _cachedHrpAddr = nil
-            else
-                trackTarget(hrp, currentRaidTarget, heightOffset, xOffset)
+            elseif not _jotaroVoidActive then
+                local obj2 = currentRaidTarget.Parent
+                local nameLower2 = obj2 and obj2.Name:lower() or ""
+                local isBoss2 = false
+                for _, bossData in ipairs(optimizedBosses) do
+                    if nameLower2:find(bossData.original:lower(), 1, true) then isBoss2 = true; break end
+                end
+                if not isBoss2 then
+                    trackTarget(hrp, currentRaidTarget, heightOffset, xOffset)
+                end
             end
         elseif _G.AutoPvp_Enabled and pvpTarget then
             if not pvpTarget.Parent then
@@ -1510,6 +1509,45 @@ end)
 
 task.spawn(function()
     while true do
+        task.wait(1)
+        if not _G.AutoRaid_Enabled then
+            _jotaroVoidActive = false
+            continue
+        end
+        if not currentRaidTarget then continue end
+
+        local obj = currentRaidTarget.Parent
+        if not obj then continue end
+
+        if not obj.Name:lower():find("jotaro") then
+            _jotaroVoidActive = false
+            continue
+        end
+
+        local ok, healthText = pcall(function()
+            return game.Players.LocalPlayer.PlayerGui.MainHud.holder.BossUi.health.Text
+        end)
+        if not ok or not healthText then continue end
+
+        local current = healthText:match("^(%d+)/")
+        if current and tonumber(current) < 1550 then
+            task.wait(10)
+            -- confirma se o jogo resetou a vida (segunda fase)
+            local ok2, healthText2 = pcall(function()
+                return game.Players.LocalPlayer.PlayerGui.MainHud.holder.BossUi.health.Text
+            end)
+            if ok2 and healthText2 then
+                local current2 = healthText2:match("^(%d+)/")
+                if current2 and tonumber(current2) > 2500 then
+                    _jotaroVoidActive = true
+                end
+            end
+        end
+    end
+end)
+
+task.spawn(function()
+    while true do
         task.wait(0.015)
         if not _G.AutoRaid_Enabled then 
             currentRaidTarget = nil
@@ -1564,10 +1602,23 @@ task.spawn(function()
             local nameLower = obj.Name:lower()
             local isBoss = false
             for _, bossData in ipairs(optimizedBosses) do
-                if nameLower == bossData.original:lower() then isBoss = true; break end
+                if nameLower:find(bossData.original:lower(), 1, true) then isBoss = true; break end
             end
 
-            if isBoss then
+            -- Jotaro: voidkill só quando HP < 1500
+            local isJotaro = nameLower:find("jotaro") ~= nil
+            if isJotaro then
+                if _jotaroVoidActive then
+                    if not voidMotionOrigin then voidMotionOrigin = hrp.Position end
+                    local angle = os.clock() * (voidMoveSpeed / voidMoveRange)
+                    local ox = math.cos(angle) * voidMoveRange
+                    local oz = math.sin(angle) * voidMoveRange
+                    hrp.Position = Vector3.new(voidMotionOrigin.X + ox, voidKeepY, voidMotionOrigin.Z + oz)
+                else
+                    voidMotionOrigin = nil
+                    trackTarget(hrp, currentRaidTarget, heightOffset, xOffset)
+                end
+            elseif isBoss then
                 if not voidMotionOrigin then voidMotionOrigin = hrp.Position end
                 local angle = os.clock() * (voidMoveSpeed / voidMoveRange)
                 local ox = math.cos(angle) * voidMoveRange
