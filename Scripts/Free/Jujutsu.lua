@@ -1,3 +1,9 @@
+-- ════════════════════════════════════════════════════════════════
+--  Jujutsu Hub
+--  UI: GalaxLib
+--  Offsets: version-6776addb8fbc4d17
+-- ════════════════════════════════════════════════════════════════
+
 loadstring(game:HttpGet("https://raw.githubusercontent.com/minudoindo-dotcom/Galax/refs/heads/main/Lib/Beta/Galax.lua"))()
 
 local Win = GalaxLib:CreateWindow({
@@ -45,32 +51,36 @@ local currentPing = 0
 local running     = true
 
 -- ════════════════════════════════════════════════════════════════
---  OFFSETS (version-ae421f0582e54718)
+--  OFFSETS  (version-6776addb8fbc4d17)
 -- ════════════════════════════════════════════════════════════════
 
-local SOUNDID_OFFSET = 224
-local VALUE_OFFSET   = 208
+local SOUNDID_OFFSET = 224   -- Sound.SoundId          — unchanged
+local VALUE_OFFSET   = 208   -- Misc.Value             — unchanged
 
 local INST = {
-    ClassDescriptor = 24,
-    ClassName       = 8,
-    Name            = 176,
+    ClassDescriptor = 24,    -- Instance.ClassDescriptor          — unchanged
+    ClassName       = 8,     -- ClassDescriptor → ClassName ptr   — unchanged
+    Name            = 176,   -- Instance.Name                     — unchanged
+    -- ChildrenStart: 112 → 120  *** UPDATED ***
+    ChildrenStart   = 120,   -- Instance.ChildrenStart
+    ChildNode       = 8,     -- child linked-list node → ptr      — unchanged
 }
 
 local ANIM = {
-    ActiveAnimations = 2152,
-    Animation        = 208,
-    AnimationId      = 208,
-    NodeNext         = 16,
+    -- ActiveAnimations: 2152 → 2120  *** UPDATED ***
+    ActiveAnimations = 2120, -- Animator.ActiveAnimations
+    Animation        = 208,  -- AnimationTrack.Animation          — unchanged
+    AnimationId      = 208,  -- Misc.AnimationId                  — unchanged
+    NodeNext         = 16,   -- linked-list node → next ptr       — unchanged
 }
 
 local HUM = {
-    Health    = 404,
-    MaxHealth = 436,
+    Health    = 404,   -- Humanoid.Health    — unchanged
+    MaxHealth = 436,   -- Humanoid.MaxHealth — unchanged
 }
 
 local CAM = {
-    ViewportSize = 744,
+    ViewportSize = 744,  -- Camera.ViewportSize — unchanged
 }
 
 -- ════════════════════════════════════════════════════════════════
@@ -277,6 +287,7 @@ end
 local function getCurrentAnimFromChar(char, mode)
     local animator = getAnimator(char)
     if not animator then return nil end
+    -- ANIM.ActiveAnimations = 2120 (updated from 2152)
     local head = readPtr(animator + ANIM.ActiveAnimations)
     if not head then return nil end
     local first = readPtr(head)
@@ -976,7 +987,7 @@ spawn(function()
     end
 end)
 
-spawn(function() while running do pcall(DiscoverESPObjects) task.wait(0.5)  end end)
+spawn(function() while running do pcall(DiscoverESPObjects) task.wait(0.5)   end end)
 spawn(function() while running do pcall(ProcessRatioQTE)    task.wait(0.016) end end)
 spawn(function() while running do pcall(ProcessPerfectSwap) task.wait(0.01)  end end)
 spawn(function() while running do pcall(RunCharaQTE)        task.wait(0.2)   end end)
