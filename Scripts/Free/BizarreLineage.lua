@@ -4,15 +4,15 @@
 --  Lib     : GalaxLib (loaded below)
 -- ════════════════════════════════════════════════════════════════
 
--- ── 1. LIBS ──────────────────────────────────────────────────────
 loadstring(game:HttpGet("https://raw.githubusercontent.com/minudoindo-dotcom/Galax/refs/heads/main/Lib/Beta/Galax.lua"))()
 
--- ── 2. OFFSETS  ──────────────────────────────────────────────────
+-- ── OFFSETS (version-6776addb8fbc4d17) ───────────────────────────
+-- BasePart.Primitive = 328 (unchanged)
+-- Primitive.Rotation = 192 (unchanged)
+local primOffset = 328   -- BasePart.Primitive
+local rotOffset  = 192   -- Primitive.Rotation
 
-local primOffset = 0x148
-local rotOffset  = 0xc0
-
--- ── 3. CORE: LookAt + TrackTarget + ESP ─────────────────────────
+-- ── CORE: LookAt + TrackTarget + ESP ─────────────────────────────
 local _cachedPrim    = nil
 local _cachedHrpAddr = nil
 
@@ -118,14 +118,13 @@ function ESP.Destroy(esp)
     esp.label:Remove(); esp.distLabel:Remove(); esp.tracer:Remove()
 end
 
--- ── 3. WINDOW ────────────────────────────────────────────────────
+-- ── WINDOW ────────────────────────────────────────────────────────
 local Win = GalaxLib:CreateWindow({
     Title   = "Bizarre Hub",
     Size    = Vector2.new(625, 510),
     MenuKey = 0x70,
 })
 
--- ── isSpawned: true quando o boneco está em Workspace.Live ───────
 local function isSpawned()
     local lp = game.Players.LocalPlayer
     if not lp then return false end
@@ -134,7 +133,7 @@ local function isSpawned()
 end
 
 -- ════════════════════════════════════════════════════════════════
---  4. DATA TABLES
+--  DATA TABLES
 -- ════════════════════════════════════════════════════════════════
 
 local targetNames = {
@@ -230,7 +229,7 @@ local voidMotionOrigin = nil
 local _jotaroVoidActive = false
 
 -- ════════════════════════════════════════════════════════════════
---  5. STATE
+--  STATE
 -- ════════════════════════════════════════════════════════════════
 
 local activeESP          = {}
@@ -269,19 +268,15 @@ _G.AutoPvp_Enabled       = false
 _G.AutoPlay_Enabled      = false
 _G.AutoReplay_Enabled    = false
 
-local _cachedHrpAddr = nil
 local _savedAnimator     = nil
 local _savedAnimParent   = nil
 local _savedAnimrParent  = nil
 
--- Items/Farm state
 local farmUnderground    = false
 local farmSafePos        = nil
 local savedPosSafe       = nil
 _G.AutoCollect_Enabled   = false
 _G.SafePlace_Enabled     = false
-
--- PVE state
 _G.AutoPVE_Enabled       = false
 local _pveThread         = nil
 local _pveTargets        = nil
@@ -291,20 +286,20 @@ local function updateOffset()
 end
 
 -- ════════════════════════════════════════════════════════════════
---  6. HELPERS
+--  HELPERS
 -- ════════════════════════════════════════════════════════════════
 
 local function getHrp()
     local lp = game.Players.LocalPlayer
-    if not lp then return nil end -- Se você saiu do jogo
+    if not lp then return nil end
     local live = workspace:FindFirstChild("Live")
     if live then
         local char = live:FindFirstChild(lp.Name)
-        if char and char.Parent then 
-            return char:FindFirstChild("HumanoidRootPart") 
+        if char and char.Parent then
+            return char:FindFirstChild("HumanoidRootPart")
         end
     end
-    return nil -- Se você morreu ou ainda não deu spawn
+    return nil
 end
 
 local function trackTarget(hrp, targetHrp, yOff, xOff)
@@ -339,13 +334,12 @@ local function findNpc(name)
         if not folder then return nil end
         for _, obj in ipairs(folder:GetChildren()) do
             local ok, dn = pcall(function() return obj:GetAttribute("DisplayName") end)
-            if (ok and dn == name) or obj.Name == name then 
-                return obj:FindFirstChild("HumanoidRootPart") or obj.PrimaryPart 
+            if (ok and dn == name) or obj.Name == name then
+                return obj:FindFirstChild("HumanoidRootPart") or obj.PrimaryPart
             end
         end
         return nil
     end
-
     return searchIn(game.Workspace:FindFirstChild("Npcs"))
         or searchIn(game.ReplicatedStorage:FindFirstChild("assets") and game.ReplicatedStorage.assets:FindFirstChild("npc_cache"))
 end
@@ -395,7 +389,7 @@ local function resolveWorldPosition(instance)
 end
 
 -- ════════════════════════════════════════════════════════════════
---  7. PVE HELPERS (declared before UI so AutoSec toggle can reference autoPveLoop)
+--  PVE HELPERS
 -- ════════════════════════════════════════════════════════════════
 
 local function getPveQuestType()
@@ -434,11 +428,9 @@ local function autoPveLoop()
         _G.AutoRaid_Enabled = false; currentRaidTarget = nil; _cachedHrpAddr = nil
         pveTeleport(QUEST_GIVER_POS); task.wait(0.5)
         keypress(0x45); task.wait(1.5); keyrelease(0x45); task.wait(1)
-
         local t0 = os.clock()
         while os.clock() - t0 < 8 and _G.AutoPVE_Enabled do
             local qType = getPveQuestType()
-            -- ja tem missao ativa — pula direto pro reset sem esperar 8s
             if qType == "Active" then break end
             if qType == "Deliver" then
                 local effects    = workspace:FindFirstChild("Effects")
@@ -505,7 +497,6 @@ local function autoPveLoop()
             end
             task.wait(0.1)
         end
-
         if _G.AutoPVE_Enabled and getPveQuestType() == nil then
             keypress(0x1B); task.wait(0.1); keyrelease(0x1B); task.wait(0.3)
             keypress(0x52); task.wait(0.1); keyrelease(0x52); task.wait(0.3)
@@ -517,7 +508,7 @@ local function autoPveLoop()
 end
 
 -- ════════════════════════════════════════════════════════════════
---  8. ESP CONFIG (declared before UI so toggles can reference it)
+--  ESP CONFIG
 -- ════════════════════════════════════════════════════════════════
 
 local _espCFG = {
@@ -539,19 +530,16 @@ local _playerESP = {
 }
 
 -- ════════════════════════════════════════════════════════════════
---  8. UI — TABS & SECTIONS
+--  UI
 -- ════════════════════════════════════════════════════════════════
 
--- ── Visuals ──────────────────────────────────────────────────────
 local VisualsTab   = Win:AddTab("Visuals")
 
 local EspSec       = VisualsTab:AddSection("Item ESP")
 EspSec:AddToggle("Enable ESP", false, function(v)
     _G.ESP_Enabled = v
     if not v then
-        for item, esp in pairs(activeESP) do
-            ESP.Destroy(esp)
-        end
+        for item, esp in pairs(activeESP) do ESP.Destroy(esp) end
         activeESP = {}
     end
 end)
@@ -571,7 +559,6 @@ PlayerEspSec:AddToggle("Stand",    true,  function(v) _playerESP.showStand = v e
 PlayerEspSec:AddColorPicker("Name Color",  Color3.fromRGB(255,255,255), function(c) _playerESP.nameColor  = c end)
 PlayerEspSec:AddColorPicker("Stand Color", Color3.fromRGB(255,200,50),  function(c) _playerESP.standColor = c end)
 
--- Player ESP render loop
 task.spawn(function()
     while true do
         task.wait(_espCFG.renderWait)
@@ -643,9 +630,7 @@ task.spawn(function()
     end
 end)
 
--- ── Exploits ─────────────────────────────────────────────────────
 local ExploitTab = Win:AddTab("Exploits")
-
 local AutoSec    = ExploitTab:AddSection("Auto")
 
 local mobDropdownRef = nil
@@ -750,9 +735,7 @@ ConfigSec:AddSlider("X Offset", {Min=0,Max=15,Default=5,Suffix=""}, function(v)
     xOffset=v
 end)
 
--- ── Items ─────────────────────────────────────────────────────────
 local ItemsTab    = Win:AddTab("Items")
-
 local ItemFarmSec = ItemsTab:AddSection("Auto Farm")
 ItemFarmSec:AddMultiDropdown("Farm Items", (function()
     local t={}; for name in pairs(targetNames) do table.insert(t,name) end; table.sort(t); return t
@@ -799,7 +782,6 @@ ItemTpSec:AddButton("Teleport to Nearest Item", function()
     else Win:Notify("Error","No selected items found",2) end
 end)
 
--- ── Teleport ──────────────────────────────────────────────────────
 local TpTab = Win:AddTab("Teleport")
 
 local TpNpcSec = TpTab:AddSection("NPCs")
@@ -910,7 +892,6 @@ TpMiscSec:AddButton("Teleport", function()
     for _,v in ipairs(TpMiscPlaces) do if v.name==selectedMisc then hrp.Position=v.pos; break end end
 end)
 
--- ── Rage ──────────────────────────────────────────────────────────
 local RageTab = Win:AddTab("Rage")
 
 local PvpSec          = RageTab:AddSection("Auto PvP")
@@ -976,7 +957,6 @@ UserIdSec:AddButton("Reset", function()
     end)
 end)
 
--- ── Positions ─────────────────────────────────────────────────────
 local posCapturing = false
 local DEFAULT_POS  = {
     play="1079,693", replay="1045,760", standSearch="748,331",
@@ -1041,7 +1021,6 @@ local posMeditateTb  = PosMeditateSec:AddTextbox("Dialogue Button", DEFAULT_POS.
 PosMeditateSec:AddButton("Change", function() capturePosition("Meditate Dialogue", posMeditateTb) end)
 PosMeditateSec:AddButton("Reset",  function() pos_meditate=nil; posMeditateTb:Set("") end)
 
--- ── Stand ─────────────────────────────────────────────────────────
 local StandTab     = Win:AddTab("Stand")
 local HttpService  = game:GetService("HttpService")
 
@@ -1108,14 +1087,10 @@ StandRollSec:AddToggle("Stop on Any Skin", false, function(v) stopOnAnySkin=v en
 
 local function useStandArrow()
     if Win._open then return false end
-
     keypress(0xC0); task.wait(0.05); keyrelease(0xC0)
     task.wait(3)
-
     if not isrbxactive() then return false end
     setrobloxinput(true)
-
-    -- ── Search box ────────────────────────────────────────────
     local cx, cy
     if pos_standSearch then
         cx, cy = pos_standSearch.x, pos_standSearch.y
@@ -1131,38 +1106,28 @@ local function useStandArrow()
         cx = absPos.X + absSize.X/2
         cy = absPos.Y + absSize.Y/2 + 20
     end
-
     mousemoveabs(cx, cy); task.wait(0.3)
     mousemoverel(0, 2);   task.wait(0.3)
     mouse1click();        task.wait(0.4)
-
     setclipboard("stand arrow"); task.wait(0.1)
     keypress(0x11); keypress(0x56); task.wait(0.05)
     keyrelease(0x56); keyrelease(0x11); task.wait(0.4)
-
-    -- ── Arrow slot ────────────────────────────────────────────
     if pos_standSlot then
         mousemoveabs(pos_standSlot.x, pos_standSlot.y); task.wait(0.3)
         mousemoverel(0, 2); task.wait(0.3)
         mouse1click(); task.wait(0.5)
     end
-
-    -- ── Use button (só clica se posição estiver definida) ─────
     if pos_standUse then
         mousemoveabs(pos_standUse.x, pos_standUse.y); task.wait(0.3)
         mousemoverel(0, 2); task.wait(0.3)
         mouse1click()
     end
-
     task.wait(0.5)
-
-    -- ── Confirm button (só clica se posição estiver definida) ─
     if pos_standConfirm then
         mousemoveabs(pos_standConfirm.x, pos_standConfirm.y); task.wait(0.3)
         mousemoverel(0, 2); task.wait(0.3)
         mouse1click()
     end
-
     return true
 end
 
@@ -1172,10 +1137,8 @@ local function autoStandRollLoop()
     while autoStandRollActive do
         local oldData = getStandData()
         local oldName = oldData and oldData.Name or "None"
-
         local used = useStandArrow()
         if not used then task.wait(2); continue end
-
         local t0 = os.clock()
         local newData = nil
         while (os.clock() - t0 < 15) and autoStandRollActive do
@@ -1184,9 +1147,7 @@ local function autoStandRollLoop()
             if newName ~= oldName then break end
             task.wait(0.5)
         end
-
         if not autoStandRollActive then break end
-
         if newData then
             updateStandLabels()
             local newName = newData.Name or "None"
@@ -1215,12 +1176,9 @@ end)
 autoRollToggleRef = rollToggle
 
 -- ════════════════════════════════════════════════════════════════
---  9. SCRIPT LOGIC — LOOPS
+--  SCRIPT LOOPS
 -- ════════════════════════════════════════════════════════════════
 
--- ── ESP visual config ────────────────────────────────────────────
-
--- SCAN: cria ESP para novos itens
 task.spawn(function()
     while true do
         if _G.ESP_Enabled then
@@ -1244,7 +1202,6 @@ task.spawn(function()
     end
 end)
 
--- RENDER
 task.spawn(function()
     while true do
         task.wait(_espCFG.renderWait)
@@ -1309,31 +1266,17 @@ local function getNearestCachedItem(hrpPos)
     return best
 end
 
--- ═══════════════════════════════════════════════════════════════
---  FARM STATE MACHINE
---  _G.AutoFarmWorking = false → sem item, Safe Place segura no céu
---  _G.AutoFarmWorking = true  → item achado, Safe Place para,
---                               farm tpa, E + 3 segurados juntos
--- ═══════════════════════════════════════════════════════════════
 _G.AutoFarmWorking = false
 
-
--- ── Farm principal ────────────────────────────────────────────
 task.spawn(function()
     while true do
         task.wait(0.1)
-        if not _G.AutoFarm_Enabled then
-            _G.AutoFarmWorking = false
-            continue
-        end
+        if not _G.AutoFarm_Enabled then _G.AutoFarmWorking = false; continue end
         if not isSpawned() then _G.AutoFarmWorking = false; task.wait(1); continue end
-
         local hrp = getHrp()
         if not hrp then _G.AutoFarmWorking = false; task.wait(1); continue end
-
         refreshFarmCache()
         local obj = getNearestCachedItem(hrp.Position)
-
         if obj and obj.Parent then
             _G.AutoFarmWorking = true
             local yOff = farmUnderground and -5 or 3
@@ -1355,7 +1298,6 @@ task.spawn(function()
                 task.wait(0.1)
             end
         else
-            -- ── sem item: Working off, Safe Place assume ──────
             _G.AutoFarmWorking = false
             if farmSafePos then
                 hrp.Position = farmSafePos
@@ -1366,8 +1308,6 @@ task.spawn(function()
     end
 end)
 
--- ── Auto Collect ──────────────────────────────────────────────
--- Só age quando Working = true (item próximo), segura 3 no mesmo timing do farm
 task.spawn(function()
     while true do
         task.wait(0.1)
@@ -1375,7 +1315,6 @@ task.spawn(function()
         if not isSpawned() then continue end
         if Win._open then continue end
         if not _G.AutoFarmWorking then continue end
-
         keypress(0x33)
         task.wait(1.8)
         keyrelease(0x33)
@@ -1383,7 +1322,6 @@ task.spawn(function()
     end
 end)
 
--- ── Safe Place via task.wait ─────────────────────────────────
 task.spawn(function()
     while true do
         task.wait(0.015)
@@ -1398,7 +1336,6 @@ task.spawn(function()
     end
 end)
 
--- Loop de tp unificado
 task.spawn(function()
     while true do
         task.wait(0.015)
@@ -1406,14 +1343,10 @@ task.spawn(function()
         local hrp = getHrp()
         if not hrp then continue end
         if _G.AutoMob_Enabled and currentMobTarget then
-            if not currentMobTarget.Parent then
-                currentMobTarget = nil; _cachedHrpAddr = nil
-            else
-                trackTarget(hrp, currentMobTarget, heightOffset, xOffset)
-            end
+            if not currentMobTarget.Parent then currentMobTarget = nil; _cachedHrpAddr = nil
+            else trackTarget(hrp, currentMobTarget, heightOffset, xOffset) end
         elseif _G.AutoRaid_Enabled and currentRaidTarget then
-            if not currentRaidTarget.Parent then
-                currentRaidTarget = nil; _cachedHrpAddr = nil
+            if not currentRaidTarget.Parent then currentRaidTarget = nil; _cachedHrpAddr = nil
             elseif not _jotaroVoidActive then
                 local obj2 = currentRaidTarget.Parent
                 local nameLower2 = obj2 and obj2.Name:lower() or ""
@@ -1421,19 +1354,13 @@ task.spawn(function()
                 for _, bossData in ipairs(optimizedBosses) do
                     if nameLower2:find(bossData.original:lower(), 1, true) then isBoss2 = true; break end
                 end
-                if not isBoss2 then
-                    trackTarget(hrp, currentRaidTarget, heightOffset, xOffset)
-                end
+                if not isBoss2 then trackTarget(hrp, currentRaidTarget, heightOffset, xOffset) end
             end
         elseif _G.AutoPvp_Enabled and pvpTarget then
-            if not pvpTarget.Parent then
-                pvpTarget = nil; _cachedHrpAddr = nil
-            else
-                trackTarget(hrp, pvpTarget, pvpHeightOffset, pvpXOffset)
-            end
+            if not pvpTarget.Parent then pvpTarget = nil; _cachedHrpAddr = nil
+            else trackTarget(hrp, pvpTarget, pvpHeightOffset, pvpXOffset) end
         elseif _G.AutoMeditate_Enabled and meditateTarget and not _G.MeditateInteracting then
-            if not meditateTarget.Parent then
-                meditateTarget = nil; _cachedHrpAddr = nil
+            if not meditateTarget.Parent then meditateTarget = nil; _cachedHrpAddr = nil
             else
                 local cloneHrp = meditateTarget:FindFirstChild("HumanoidRootPart")
                 if cloneHrp then trackTarget(hrp, cloneHrp, heightOffset, xOffset)
@@ -1446,27 +1373,15 @@ end)
 task.spawn(function()
     while true do
         task.wait(0.015)
-        if not _G.AutoMob_Enabled then 
-            currentMobTarget = nil 
-            continue 
-        end
-        
+        if not _G.AutoMob_Enabled then currentMobTarget = nil; continue end
         local hrp = getHrp()
-        if not hrp or not hrp.Parent then 
-            currentMobTarget = nil
-            continue 
-        end
-
-        -- Validação do alvo atual
+        if not hrp or not hrp.Parent then currentMobTarget = nil; continue end
         if currentMobTarget then
             local tarPart = currentMobTarget.Parent
             if not tarPart or not tarPart.Parent or not tarPart:FindFirstChild("Humanoid") or tarPart.Humanoid.Health <= 0 then
-                currentMobTarget = nil
-                _cachedHrpAddr = nil
+                currentMobTarget = nil; _cachedHrpAddr = nil
             end
         end
-
-        -- Busca novo alvo (Cálculo manual compatível com Matcha)
         if not currentMobTarget then
             local nearest = nil
             local minDistSq = 999999
@@ -1476,23 +1391,17 @@ task.spawn(function()
                 for i = 1, #children do
                     local obj = children[i]
                     local rawName = obj.Name
-                    -- Lógica do ponto "." e limpeza de nome
                     if rawName:sub(1,1) == "." and #rawName > 7 then
                         local label = rawName:sub(2, -7)
                         if selectedMobs[label] then
                             local hum = obj:FindFirstChild("Humanoid")
                             local mobHrp = obj:FindFirstChild("HumanoidRootPart")
                             if hum and hum.Health > 0 and mobHrp then
-                                -- CÁLCULO MANUAL X, Y, Z (Proteção contra Nil)
                                 local p1 = hrp.Position
                                 local p2 = mobHrp.Position
-                                local dx, dy, dz = p1.X - p2.X, p1.Y - p2.Y, p1.Z - p2.Z
-                                local distSq = (dx * dx) + (dy * dy) + (dz * dz)
-                                
-                                if distSq < minDistSq then 
-                                    minDistSq = distSq
-                                    nearest = mobHrp 
-                                end
+                                local dx, dy, dz = p1.X-p2.X, p1.Y-p2.Y, p1.Z-p2.Z
+                                local distSq = dx*dx + dy*dy + dz*dz
+                                if distSq < minDistSq then minDistSq=distSq; nearest=mobHrp end
                             end
                         end
                     end
@@ -1500,47 +1409,31 @@ task.spawn(function()
             end
             currentMobTarget = nearest
         end
-
-        if currentMobTarget then
-            trackTarget(hrp, currentMobTarget, heightOffset, xOffset)
-        end
+        if currentMobTarget then trackTarget(hrp, currentMobTarget, heightOffset, xOffset) end
     end
 end)
 
 task.spawn(function()
     while true do
         task.wait(1)
-        if not _G.AutoRaid_Enabled then
-            _jotaroVoidActive = false
-            continue
-        end
+        if not _G.AutoRaid_Enabled then _jotaroVoidActive = false; continue end
         if not currentRaidTarget then continue end
-
         local obj = currentRaidTarget.Parent
         if not obj then continue end
-
-        if not obj.Name:lower():find("jotaro") then
-            _jotaroVoidActive = false
-            continue
-        end
-
+        if not obj.Name:lower():find("jotaro") then _jotaroVoidActive = false; continue end
         local ok, healthText = pcall(function()
             return game.Players.LocalPlayer.PlayerGui.MainHud.holder.BossUi.health.Text
         end)
         if not ok or not healthText then continue end
-
         local current = healthText:match("^(%d+)/")
         if current and tonumber(current) < 1550 then
             task.wait(10)
-            -- confirma se o jogo resetou a vida (segunda fase)
             local ok2, healthText2 = pcall(function()
                 return game.Players.LocalPlayer.PlayerGui.MainHud.holder.BossUi.health.Text
             end)
             if ok2 and healthText2 then
                 local current2 = healthText2:match("^(%d+)/")
-                if current2 and tonumber(current2) > 2500 then
-                    _jotaroVoidActive = true
-                end
+                if current2 and tonumber(current2) > 2500 then _jotaroVoidActive = true end
             end
         end
     end
@@ -1549,25 +1442,15 @@ end)
 task.spawn(function()
     while true do
         task.wait(0.015)
-        if not _G.AutoRaid_Enabled then 
-            currentRaidTarget = nil
-            voidMotionOrigin = nil
-            continue 
-        end
-
+        if not _G.AutoRaid_Enabled then currentRaidTarget=nil; voidMotionOrigin=nil; continue end
         local hrp = getHrp()
-        if not hrp or not hrp.Parent then 
-            currentRaidTarget = nil
-            continue 
-        end
-
+        if not hrp or not hrp.Parent then currentRaidTarget=nil; continue end
         if currentRaidTarget then
             local targetChar = currentRaidTarget.Parent
             if not targetChar or not targetChar.Parent or not targetChar:FindFirstChild("Humanoid") or targetChar.Humanoid.Health <= 0 then
-                currentRaidTarget = nil; _cachedHrpAddr = nil; voidMotionOrigin = nil
+                currentRaidTarget=nil; _cachedHrpAddr=nil; voidMotionOrigin=nil
             end
         end
-
         if not currentRaidTarget then
             local nearest = nil
             local minDistSq = 999999
@@ -1576,36 +1459,28 @@ task.spawn(function()
                 local children = live:GetChildren()
                 for i = 1, #children do
                     local obj = children[i]
-                    -- Só NPCs que começam com ponto e não são inocentes
                     if obj.Name:sub(1,1) == "." and not isInnocent(obj) then
                         local hum = obj:FindFirstChild("Humanoid")
                         local raidHrp = obj:FindFirstChild("HumanoidRootPart")
                         if hum and hum.Health > 0 and raidHrp then
                             local p1 = hrp.Position
                             local p2 = raidHrp.Position
-                            local dx, dy, dz = p1.X - p2.X, p1.Y - p2.Y, p1.Z - p2.Z
-                            local distSq = (dx * dx) + (dy * dy) + (dz * dz)
-                            
-                            if distSq < minDistSq then
-                                minDistSq = distSq
-                                nearest = raidHrp
-                            end
+                            local dx, dy, dz = p1.X-p2.X, p1.Y-p2.Y, p1.Z-p2.Z
+                            local distSq = dx*dx + dy*dy + dz*dz
+                            if distSq < minDistSq then minDistSq=distSq; nearest=raidHrp end
                         end
                     end
                 end
             end
             currentRaidTarget = nearest
         end
-
         if currentRaidTarget then
             local obj = currentRaidTarget.Parent
             local nameLower = obj.Name:lower()
             local isBoss = false
             for _, bossData in ipairs(optimizedBosses) do
-                if nameLower:find(bossData.original:lower(), 1, true) then isBoss = true; break end
+                if nameLower:find(bossData.original:lower(), 1, true) then isBoss=true; break end
             end
-
-            -- Jotaro: voidkill só quando HP < 1500
             local isJotaro = nameLower:find("jotaro") ~= nil
             if isJotaro then
                 if _jotaroVoidActive then
@@ -1613,7 +1488,7 @@ task.spawn(function()
                     local angle = os.clock() * (voidMoveSpeed / voidMoveRange)
                     local ox = math.cos(angle) * voidMoveRange
                     local oz = math.sin(angle) * voidMoveRange
-                    hrp.Position = Vector3.new(voidMotionOrigin.X + ox, voidKeepY, voidMotionOrigin.Z + oz)
+                    hrp.Position = Vector3.new(voidMotionOrigin.X+ox, voidKeepY, voidMotionOrigin.Z+oz)
                 else
                     voidMotionOrigin = nil
                     trackTarget(hrp, currentRaidTarget, heightOffset, xOffset)
@@ -1623,7 +1498,7 @@ task.spawn(function()
                 local angle = os.clock() * (voidMoveSpeed / voidMoveRange)
                 local ox = math.cos(angle) * voidMoveRange
                 local oz = math.sin(angle) * voidMoveRange
-                hrp.Position = Vector3.new(voidMotionOrigin.X + ox, voidKeepY, voidMotionOrigin.Z + oz)
+                hrp.Position = Vector3.new(voidMotionOrigin.X+ox, voidKeepY, voidMotionOrigin.Z+oz)
             else
                 voidMotionOrigin = nil
                 trackTarget(hrp, currentRaidTarget, heightOffset, xOffset)
@@ -1638,9 +1513,7 @@ task.spawn(function()
         if not _G.AutoAttack_Enabled then continue end
         if not isSpawned() then task.wait(1); continue end
         if Win._open then continue end
-        mouse1press()
-        task.wait(0.1)
-        mouse1release()
+        mouse1press(); task.wait(0.1); mouse1release()
     end
 end)
 
@@ -1649,18 +1522,15 @@ task.spawn(function()
         task.wait(0.5)
         if not _G.AutoStand_Enabled then continue end
         if not isSpawned() then task.wait(1); continue end
-        local lp = game.Players.LocalPlayer
-        if not lp then task.wait(1); continue end
+        local lp2 = game.Players.LocalPlayer
+        if not lp2 then task.wait(1); continue end
         local live = game.Workspace:FindFirstChild("Live")
         if not live then task.wait(1); continue end
-        local charModel = live:FindFirstChild(lp.Name)
+        local charModel = live:FindFirstChild(lp2.Name)
         if not charModel then task.wait(1); continue end
         local val = charModel:GetAttribute("SummonedStand") or ""
         if type(val) ~= "string" then val = tostring(val) end
-        if #val < 2 then
-            keypress(0x09); task.wait(0.1); keyrelease(0x09)
-            task.wait(1) -- espera o atributo atualizar antes de checar de novo
-        end
+        if #val < 2 then keypress(0x09); task.wait(0.1); keyrelease(0x09); task.wait(1) end
     end
 end)
 
@@ -1680,17 +1550,14 @@ task.spawn(function()
     while true do
         task.wait(0.1)
         if not _G.AutoMeditate_Enabled then continue end
-        if not isSpawned() then meditateTarget = nil; task.wait(1); continue end
+        if not isSpawned() then meditateTarget=nil; task.wait(1); continue end
         local hrp = getHrp()
         if not hrp then continue end
-
-        if meditateTarget and not meditateTarget.Parent then meditateTarget = nil end
-        if not meditateTarget then meditateTarget = findMeditateClone() end
-
+        if meditateTarget and not meditateTarget.Parent then meditateTarget=nil end
+        if not meditateTarget then meditateTarget=findMeditateClone() end
         if not meditateTarget then
             local theSelf = game.Workspace:FindFirstChild("Npcs") and game.Workspace.Npcs:FindFirstChild("The Self")
             local selfHrp = theSelf and (theSelf:FindFirstChild("HumanoidRootPart") or theSelf.PrimaryPart)
-
             if selfHrp then
                 local selfPos = selfHrp.Position + Vector3.new(0, 3, 0)
                 local t0 = os.clock()
@@ -1705,7 +1572,6 @@ task.spawn(function()
                 task.wait(1)
                 meditateTarget = findMeditateClone()
             else
-                -- fallback: ponto fixo da arena
                 local t0 = os.clock()
                 while os.clock() - t0 < 0.5 and _G.AutoMeditate_Enabled do
                     hrp.Position = meditateArenaFallback
@@ -1717,14 +1583,9 @@ task.spawn(function()
             end
             continue
         end
-
-        -- tem clone: trackTarget igual mob/raid
         local cloneHrp = meditateTarget:FindFirstChild("HumanoidRootPart")
-        if cloneHrp then
-            trackTarget(hrp, cloneHrp, heightOffset, xOffset)
-        else
-            meditateTarget = nil
-        end
+        if cloneHrp then trackTarget(hrp, cloneHrp, heightOffset, xOffset)
+        else meditateTarget=nil end
     end
 end)
 
@@ -1734,16 +1595,13 @@ task.spawn(function()
         if not _G.AutoPlay_Enabled then continue end
         if isSpawned() then continue end
         if Win._open then continue end
-
-        local lp = game.Players.LocalPlayer
-        if not lp then task.wait(1); continue end
-        local playerGui = lp:FindFirstChild("PlayerGui")
+        local lp2 = game.Players.LocalPlayer
+        if not lp2 then task.wait(1); continue end
+        local playerGui = lp2:FindFirstChild("PlayerGui")
         if not playerGui then continue end
-
         local mainMenu = playerGui:FindFirstChild("Main Menu")
         local buttons  = mainMenu and mainMenu:FindFirstChild("Buttons")
         local playBtn  = buttons and buttons:FindFirstChild("Quick Play")
-
         if playBtn then
             task.wait(2)
             local targetX, targetY
@@ -1756,12 +1614,11 @@ task.spawn(function()
                 targetX = pos.X + (size.X / 2)
                 targetY = pos.Y + (size.Y / 10) + 36
             end
-
             mousemoveabs(targetX, targetY); task.wait(0.05)
             for i = 1, 4 do
                 local jx = (i % 2 == 0) and 2 or -2
                 local jy = (i % 2 == 0) and 1 or -1
-                mousemoveabs(targetX + jx, targetY + jy); task.wait(0.03)
+                mousemoveabs(targetX+jx, targetY+jy); task.wait(0.03)
             end
             mousemoveabs(targetX, targetY); task.wait(0.05)
             mouse1press(); task.wait(0.08); mouse1release()
@@ -1774,19 +1631,14 @@ task.spawn(function()
     while true do
         task.wait(1)
         if not _G.AutoReplay_Enabled then continue end
-        
-        -- [NOVO] Suspende se a interface da GalaxLib está visível na tela
         if Win._open then continue end
-        
-        local lp = game.Players.LocalPlayer
-        if not lp then task.wait(1); continue end
-        local playerGui = lp:FindFirstChild("PlayerGui")
+        local lp2 = game.Players.LocalPlayer
+        if not lp2 then task.wait(1); continue end
+        local playerGui = lp2:FindFirstChild("PlayerGui")
         if not playerGui then continue end
-
         local raidcomplete = playerGui:FindFirstChild("raidcomplete")
         local raid = raidcomplete and raidcomplete:FindFirstChild("raid")
         local retryBtn = raid and raid:FindFirstChild("retry")
-
         if retryBtn then
             local targetX, targetY
             if pos_replay then
@@ -1798,12 +1650,11 @@ task.spawn(function()
                 targetX = pos.X + (size.X / 2)
                 targetY = pos.Y + (size.Y / 2)
             end
-
             mousemoveabs(targetX, targetY); task.wait(0.05)
             for i = 1, 4 do
                 local jx = (i % 2 == 0) and 2 or -2
                 local jy = (i % 2 == 0) and 1 or -1
-                mousemoveabs(targetX + jx, targetY + jy); task.wait(0.03)
+                mousemoveabs(targetX+jx, targetY+jy); task.wait(0.03)
             end
             mousemoveabs(targetX, targetY); task.wait(0.05)
             mouse1press(); task.wait(0.08); mouse1release()
@@ -1816,9 +1667,8 @@ task.spawn(function()
     while true do
         task.wait(0.015)
         if not _G.AutoPvp_Enabled then continue end
-        if not isSpawned() then pvpTarget = nil; task.wait(1); continue end
+        if not isSpawned() then pvpTarget=nil; task.wait(1); continue end
         if not selectedPvpPlayer then continue end
-        -- se já tem target válido, o loop unificado cuida do tp+rot
         if pvpTarget and pvpTarget.Parent then continue end
         pvpTarget = nil
         local live = game.Workspace:FindFirstChild("Live")
@@ -1826,18 +1676,15 @@ task.spawn(function()
         for _, obj in ipairs(live:GetChildren()) do
             if obj.Name == selectedPvpPlayer then
                 local targetHrp = obj:FindFirstChild("HumanoidRootPart")
-                if targetHrp then pvpTarget = targetHrp; break end
+                if targetHrp then pvpTarget=targetHrp; break end
             end
         end
     end
 end)
 
-
-
--- ═══════════════════════════════════════════════════════════════
---  BOOT — carrega config junto com o script
---  Quando boneco entra no Live, re-dispara callbacks dos toggles ativos
--- ═══════════════════════════════════════════════════════════════
+-- ════════════════════════════════════════════════════════════════
+--  BOOT
+-- ════════════════════════════════════════════════════════════════
 
 local function reFireActiveToggles()
     for _, tab in ipairs(Win._tabs) do
@@ -1857,8 +1704,6 @@ task.spawn(function()
     task.wait(0.5)
     Win:LoadConfig(true, false)
     Win:Notify("Config loaded!", "Bizarre Hub", 3)
-
-    -- Quando o boneco entrar no Live, re-dispara todos os toggles ativos
     local wasSpawned = isSpawned()
     while Win._running do
         task.wait(0.5)
