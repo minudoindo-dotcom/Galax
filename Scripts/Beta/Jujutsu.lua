@@ -1,6 +1,7 @@
 -- ════════════════════════════════════════════════════════════════
 --  Jujutsu Hub
 --  UI: GalaxLib
+--  Offsets: version-6776addb8fbc4d17
 -- ════════════════════════════════════════════════════════════════
 
 loadstring(game:HttpGet("https://raw.githubusercontent.com/minudoindo-dotcom/Galax/refs/heads/main/Lib/Beta/Galax.lua"))()
@@ -62,43 +63,47 @@ local charlesCooldownAddr     = nil
 local charlesLastState        = false
 
 -- ════════════════════════════════════════════════════════════════
---  OFFSETS  (version-ae421f0582e54718)
+--  OFFSETS  (version-6776addb8fbc4d17)
 -- ════════════════════════════════════════════════════════════════
 
--- GuiObject.Visible  = 1461  (byte)
+-- GuiObject.Visible  = 1461  (byte)          — unchanged
 local VISIBLE_OFFSET = 1461
 
--- Sound.SoundId      = 224   (string pointer)
+-- Sound.SoundId      = 224   (string ptr)    — unchanged
 local SOUNDID_OFFSET = 224
 
--- Misc.Value         = 208   (float for ValueBase cooldown)
+-- Misc.Value         = 208   (float)         — unchanged
 local VALUE_OFFSET   = 208
 
 local INST = {
-    ClassDescriptor = 24,  -- Instance.ClassDescriptor
-    ClassName       = 8,   -- ClassDescriptor → ClassName ptr
-    Name            = 176, -- Instance.Name
+    ClassDescriptor = 24,   -- Instance.ClassDescriptor          — unchanged
+    ClassName       = 8,    -- ClassDescriptor → ClassName ptr   — unchanged
+    Name            = 176,  -- Instance.Name                     — unchanged
+    -- ChildrenStart changed: 112 → 120
+    ChildrenStart   = 120,  -- Instance.ChildrenStart  *** UPDATED ***
+    ChildNode       = 8,    -- child linked-list node → ptr       — unchanged
 }
 
 local ANIM = {
-    ActiveAnimations = 2152, -- Animator.ActiveAnimations
-    Animation        = 208,  -- AnimationTrack.Animation
-    AnimationId      = 208,  -- Misc.AnimationId (Animation → id ptr)
-    NodeNext         = 16,   -- linked-list node → next ptr
+    -- ActiveAnimations changed: 2152 → 2120
+    ActiveAnimations = 2120, -- Animator.ActiveAnimations  *** UPDATED ***
+    Animation        = 208,  -- AnimationTrack.Animation          — unchanged
+    AnimationId      = 208,  -- Misc.AnimationId                  — unchanged
+    NodeNext         = 16,   -- linked-list node → next ptr       — unchanged
 }
 
 local HUM = {
-    Health    = 404, -- Humanoid.Health
-    MaxHealth = 436, -- Humanoid.MaxHealth
+    Health    = 404, -- Humanoid.Health    — unchanged
+    MaxHealth = 436, -- Humanoid.MaxHealth — unchanged
 }
 
 local CAM = {
-    ViewportSize = 744, -- Camera.ViewportSize (Vector2 as two floats)
+    ViewportSize = 744, -- Camera.ViewportSize — unchanged
 }
 
 local GUI = {
-    AbsolutePosition = 272, -- GuiBase2D.AbsolutePosition
-    AbsoluteSize     = 280, -- GuiBase2D.AbsoluteSize
+    AbsolutePosition = 272, -- GuiBase2D.AbsolutePosition — unchanged
+    AbsoluteSize     = 280, -- GuiBase2D.AbsoluteSize     — unchanged
 }
 
 -- ════════════════════════════════════════════════════════════════
@@ -424,6 +429,7 @@ end
 local function getCurrentAnimFromChar(char, mode)
     local animator = getAnimator(char)
     if not animator then return nil end
+    -- Uses ANIM.ActiveAnimations = 2120 (updated from 2152)
     local head = readPtr(animator + ANIM.ActiveAnimations)
     if not head then return nil end
     local first = readPtr(head)
@@ -695,13 +701,13 @@ end
 -- ════════════════════════════════════════════════════════════════
 
 local function CreateESPDrawing(name, color)
-    local drawing        = Drawing.new("Text")
-    drawing.Font         = Drawing.Fonts.System
-    drawing.Text         = name
-    drawing.Color        = Color3.fromRGB(color[1], color[2], color[3])
-    drawing.Outline      = true
-    drawing.Center       = true
-    drawing.Visible      = false
+    local drawing   = Drawing.new("Text")
+    drawing.Font    = Drawing.Fonts.System
+    drawing.Text    = name
+    drawing.Color   = Color3.fromRGB(color[1], color[2], color[3])
+    drawing.Outline = true
+    drawing.Center  = true
+    drawing.Visible = false
     return drawing
 end
 
@@ -810,8 +816,6 @@ local function UpdateDomainHealthESP()
     local domainsFolder = workspace:FindFirstChild("Domains")
     local playerPos     = GetPlayerPosition()
     local nearbyThresh  = CONFIG.domainHealthESP.nearbyThreshold
-
-    -- Read viewport via Camera.ViewportSize (offset 744, two sequential floats)
     local screenCenterX = 960
     local cam = workspace.CurrentCamera
     if cam then
@@ -823,7 +827,6 @@ local function UpdateDomainHealthESP()
             screenCenterX = cam.ViewportSize.X / 2
         end
     end
-
     local seenAddresses = {}
     if domainsFolder then
         for _, domain in ipairs(domainsFolder:GetChildren()) do
@@ -1032,7 +1035,6 @@ local function isUltimateReady()
     if not readyFrame then return false end
     local addr = tonumber(readyFrame.Address)
     if not addr or addr <= 4096 then return false end
-    -- GuiObject.Visible is a byte at offset 1461 (dump)
     local ok, byte = pcall(memory_read, "byte", addr + VISIBLE_OFFSET)
     return ok and byte ~= 0
 end
@@ -1047,10 +1049,8 @@ local function checkEquippedAbilities()
     local gui     = LocalPlayer:FindFirstChild("PlayerGui")
     local moveset = gui and SafeFind(gui, "Main", "Moveset")
     if not moveset then return end
-
     headOfHeiEquipped = moveset:FindFirstChild("Projection Breaker") ~= nil
     charlesEquipped   = moveset:FindFirstChild("Eye Catching") ~= nil
-
     if headOfHeiEquipped then
         if _G.AwakeningCounter_Enabled and not headOfHeiEquippedNotified then
             Win:Notify("Equipment", "Head of Hei equipped - Awakening ready", 2)
@@ -1059,7 +1059,6 @@ local function checkEquippedAbilities()
     else
         headOfHeiEquippedNotified = false
     end
-
     if charlesEquipped then
         if _G.AutoCounter_Enabled and not charlesEquippedNotified then
             Win:Notify("Counter", "Charles Counter Ready", 2)
@@ -1068,7 +1067,6 @@ local function checkEquippedAbilities()
     else
         charlesEquippedNotified = false
     end
-
     local hasLucky = checkForLuckyCoward()
     if hasLucky ~= luckyCowardEquipped then
         luckyCowardEquipped = hasLucky
@@ -1089,14 +1087,10 @@ local function monitorCharlesCooldown()
     if not eyeFrame then return true end
     local cooldown = eyeFrame:FindFirstChild("Cooldown")
     if not cooldown then return true end
-
     charlesCooldownAddr = tonumber(cooldown.Address)
     if not charlesCooldownAddr or charlesCooldownAddr <= 4096 then return true end
-
-    -- ValueBase.Value (float) at offset 208 (Misc.Value from dump)
     local ok, secondsLeft = pcall(memory_read, "float", charlesCooldownAddr + VALUE_OFFSET)
-    if not ok or secondsLeft ~= secondsLeft then return true end  -- NaN guard
-
+    if not ok or secondsLeft ~= secondsLeft then return true end
     local isOnCD = secondsLeft > 0.1
     if isOnCD ~= charlesLastState then
         if isOnCD then
@@ -1226,7 +1220,6 @@ task.spawn(function()
             if not theirRoot then continue end
             local dist = getMagnitude(theirRoot.Position, myRoot.Position)
 
-            -- Block range
             if dist <= BLOCK_RANGE then
                 local id = getCurrentAnimFromChar(p.Character, BlockMode)
                 if id then
@@ -1235,7 +1228,6 @@ task.spawn(function()
                 end
             end
 
-            -- Dash range
             if dist <= DASH_RANGE then
                 local id = getCurrentAnimFromChar(p.Character, DashMode)
                 if id then
@@ -1244,7 +1236,6 @@ task.spawn(function()
                 end
             end
 
-            -- Skill range
             if dist <= SKILL_RANGE then
                 local id = getCurrentAnimFromChar(p.Character, SkillBlockMode)
                 if id then
@@ -1254,7 +1245,7 @@ task.spawn(function()
             end
         end
 
-        -- ── AUTO COUNTER (highest priority) ──────────────────────
+        -- AUTO COUNTER (highest priority)
         if _G.AutoCounter_Enabled and anyAnimPlayer and anyAnimId then
             if luckyCowardEquipped then
                 mouse1click()
@@ -1271,52 +1262,39 @@ task.spawn(function()
             end
         end
 
-        -- ── AUTO SKILL BLOCK ─────────────────────────────────────
+        -- AUTO SKILL BLOCK
         if _G.AutoSkillBlock_Enabled and skillAnimPlayer and skillAnimId then
             if not skillTriggered then
-                skillTriggered = true
-                skillStart     = tick()
-                keypress(KEY_F)
+                skillTriggered = true; skillStart = tick(); keypress(KEY_F)
             end
             if skillTriggered and tick() - skillStart >= BLOCK_HOLD_TIME then
-                keyrelease(KEY_F)
-                mouse1click()
-                skillTriggered = false
+                keyrelease(KEY_F); mouse1click(); skillTriggered = false
             end
             continue
         end
 
-        -- ── AUTO BLOCK DASH ──────────────────────────────────────
+        -- AUTO BLOCK DASH
         if _G.AutoBlockDash_Enabled and dashAnimPlayer and dashAnimId then
             if not dashTriggered then
-                dashTriggered = true
-                dashStart     = tick()
-                keypress(KEY_F)
+                dashTriggered = true; dashStart = tick(); keypress(KEY_F)
             end
             if dashTriggered and tick() - dashStart >= BLOCK_HOLD_TIME then
-                keyrelease(KEY_F)
-                mouse1click()
-                dashTriggered = false
+                keyrelease(KEY_F); mouse1click(); dashTriggered = false
             end
             continue
         end
 
-        -- ── AUTO BLOCK ───────────────────────────────────────────
+        -- AUTO BLOCK
         if _G.AutoBlock_Enabled and blockAnimPlayer and blockAnimId then
             if not blockTriggered then
-                blockTriggered = true
-                blockStart     = tick()
-                keypress(KEY_F)
+                blockTriggered = true; blockStart = tick(); keypress(KEY_F)
             end
             if blockTriggered and tick() - blockStart >= BLOCK_HOLD_TIME then
-                keyrelease(KEY_F)
-                mouse1click()
-                blockTriggered = false
+                keyrelease(KEY_F); mouse1click(); blockTriggered = false
             end
             continue
         end
 
-        -- Release if nothing detected
         if blockTriggered then keyrelease(KEY_F); blockTriggered = false end
         if dashTriggered  then keyrelease(KEY_F); dashTriggered  = false end
         if skillTriggered then keyrelease(KEY_F); skillTriggered = false end
@@ -1333,14 +1311,12 @@ task.spawn(function()
         if not _G.AwakeningCounter_Enabled then continue end
         if not isUltimateReady() then continue end
         if not headOfHeiEquipped and not charlesEquipped then continue end
-
         local myChar = LocalPlayer and LocalPlayer.Character
         if not myChar then continue end
         local myRoot = myChar:FindFirstChild("HumanoidRootPart")
                     or myChar:FindFirstChild("Torso")
                     or myChar:FindFirstChild("UpperTorso")
         if not myRoot then continue end
-
         for _, p in ipairs(Players:GetPlayers()) do
             if not p or isLocalPlayer(p) or not p.Character then continue end
             local theirRoot = p.Character:FindFirstChild("HumanoidRootPart")
@@ -1368,7 +1344,6 @@ end)
 --  BACKGROUND LOOPS
 -- ════════════════════════════════════════════════════════════════
 
--- Periodic ability check
 task.spawn(function()
     while true do
         if _G.AutoCounter_Enabled or _G.AwakeningCounter_Enabled then
@@ -1378,7 +1353,6 @@ task.spawn(function()
     end
 end)
 
--- Auto QTE
 spawn(function()
     while running do
         if CONFIG.autoQTE.enabled and not iskeypressed(KEYS.F) then
@@ -1388,16 +1362,11 @@ spawn(function()
                     delay = delay + (math.random() * 2 - 1) * CONFIG.autoQTE.deviation
                 end
                 task.wait(delay)
-            else
-                task.wait(0.05)
-            end
-        else
-            task.wait(0.1)
-        end
+            else task.wait(0.05) end
+        else task.wait(0.1) end
     end
 end)
 
--- ESP position update
 spawn(function()
     while running do
         pcall(UpdateESPPositions)
@@ -1406,32 +1375,9 @@ spawn(function()
     end
 end)
 
--- ESP discovery
-spawn(function()
-    while running do pcall(DiscoverESPObjects) task.wait(0.5) end
-end)
-
--- Ratio QTE
-spawn(function()
-    while running do pcall(ProcessRatioQTE) task.wait(0.016) end
-end)
-
--- Perfect Swap
-spawn(function()
-    while running do pcall(ProcessPerfectSwap) task.wait(0.01) end
-end)
-
--- Chara QTE
-spawn(function()
-    while running do pcall(RunCharaQTE) task.wait(0.2) end
-end)
-
--- Domain Votes
-spawn(function()
-    while running do pcall(ProcessDomainVotes) task.wait(0.05) end
-end)
-
--- Ping tracker
-spawn(function()
-    while running do currentPing = GetPing() task.wait(1) end
-end)
+spawn(function() while running do pcall(DiscoverESPObjects) task.wait(0.5) end end)
+spawn(function() while running do pcall(ProcessRatioQTE) task.wait(0.016) end end)
+spawn(function() while running do pcall(ProcessPerfectSwap) task.wait(0.01) end end)
+spawn(function() while running do pcall(RunCharaQTE) task.wait(0.2) end end)
+spawn(function() while running do pcall(ProcessDomainVotes) task.wait(0.05) end end)
+spawn(function() while running do currentPing = GetPing() task.wait(1) end end)
