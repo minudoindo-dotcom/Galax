@@ -1,7 +1,7 @@
 GalaxHubWhitelist = {
     "WhyMayko",
     "sakumoriya",
-    "Nullxietys_World",
+    "quarterballer8",
     "XOFsleeperagent",
     "lambpelt",
     "tfuegoodly",
