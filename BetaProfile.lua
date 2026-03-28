@@ -39,6 +39,7 @@ GalaxHubWhitelist = {
     "lucythethirdaccount",
     "Br4zilianPsycho",
     "vuxito",
+    "pinkmasha111",
 
     -- Add more users below this line!
 }
