@@ -1,10 +1,20 @@
+-- Skid bridger: WESTERN
+
 loadstring(game:HttpGet("https://raw.githubusercontent.com/minudoindo-dotcom/Galax/refs/heads/main/Lib/Beta/Galax.lua"))()
 
-local E_KEY = 0x45
-local HOLD_TIME = 2.5
-local LOOP_DELAY = 1000
-local LOOT_RANGE = 8
-local RETURN_RANGE = 10
+-- UI must be created immediately after GalaxLib loads
+local Win = GalaxLib:CreateWindow({
+    Title   = "Skid bridger: WESTERN",
+    Size    = Vector2.new(520, 400),
+    MenuKey = 0x70,
+})
+
+local E_KEY             = 0x45
+local HOLD_TIME         = 2.5
+local LOOP_DELAY        = 120
+local LOOT_RANGE        = 8
+local RETURN_RANGE      = 10
+local PLAYER_SKIP_RANGE = 67
 
 local RETURN_X = -8557.8
 local RETURN_Y = 67.4
@@ -12,6 +22,12 @@ local RETURN_Z = -3090.7
 
 local chestLooting = false
 local lootedChests = {}
+local skippedChests = {}
+local hasNotifiedSkip = false
+
+local LocalPlayer = game.Players.LocalPlayer
+
+-- ── Helpers ──────────────────────────────────────────────────────
 
 local function getAllChests()
     local chests = {}
@@ -27,12 +43,12 @@ end
 
 local function getChestPosition(chest)
     local part = chest:FindFirstChild("HumanoidRootPart")
-        or chest:FindFirstChildWhichIsA("BasePart")
+              or chest:FindFirstChildWhichIsA("BasePart")
     return part and part.Position or nil
 end
 
 local function getPlayerPosition()
-    local char = game.Players.LocalPlayer.Character
+    local char = LocalPlayer.Character
     if not char then return nil end
     local hrp = char:FindFirstChild("HumanoidRootPart")
     return hrp and hrp.Position or nil
@@ -44,28 +60,40 @@ local function getDist(a, b)
     return math.sqrt(d.X^2 + d.Y^2 + d.Z^2)
 end
 
+local function isOtherPlayerNearChest(chest)
+    local chestPos = getChestPosition(chest)
+    if not chestPos then return false end
+    for _, player in ipairs(game.Players:GetPlayers()) do
+        if player == LocalPlayer then continue end
+        local char = player.Character
+        local hrp  = char and char:FindFirstChild("HumanoidRootPart")
+        if not hrp then continue end
+        local dist = getDist(hrp.Position, chestPos)
+        if dist <= PLAYER_SKIP_RANGE then
+            return true
+        end
+    end
+    return false
+end
+
 local function spamTeleport(pos)
-    local char = game.Players.LocalPlayer.Character
+    local char = LocalPlayer.Character
     if not char then return false end
     local hrp = char:FindFirstChild("HumanoidRootPart")
     if not hrp then return false end
     for i = 1, 5 do
         hrp.Position = pos
-        pcall(function() hrp.AssemblyLinearVelocity = Vector3.new(0,0,0) end)
+        pcall(function() hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0) end)
     end
     return true
 end
 
 local function isAtChest(chest)
-    local playerPos = getPlayerPosition()
-    local chestPos = getChestPosition(chest)
-    return getDist(playerPos, chestPos) <= LOOT_RANGE
+    return getDist(getPlayerPosition(), getChestPosition(chest)) <= LOOT_RANGE
 end
 
 local function isAtReturn()
-    local playerPos = getPlayerPosition()
-    local returnPos = Vector3.new(RETURN_X, RETURN_Y, RETURN_Z)
-    return getDist(playerPos, returnPos) <= RETURN_RANGE
+    return getDist(getPlayerPosition(), Vector3.new(RETURN_X, RETURN_Y, RETURN_Z)) <= RETURN_RANGE
 end
 
 local function getChestId(chest)
@@ -79,35 +107,52 @@ local function lootChest(chest)
     if not pos then return false end
     local tpPos = Vector3.new(pos.X, pos.Y + 3, pos.Z)
 
-    if not isAtChest(chest) then
-        for i = 1, 3 do spamTeleport(tpPos) end
-        task.wait(0.1)
-    end
-
-    for attempts = 1, 15 do
-        if isAtChest(chest) then
-            keypress(E_KEY)
-            task.wait(HOLD_TIME)
-            keyrelease(E_KEY)
-            return true
-        end
+    -- Teleport and wait to arrive
+    for i = 1, 3 do 
         spamTeleport(tpPos)
-        task.wait(0.05)
+        task.wait(0.2) 
     end
+    
+    -- Wait a bit to ensure we're properly positioned
+    task.wait(0.5)
+    
+    -- Check if we're actually close enough
+    if not isAtChest(chest) then
+        -- Try one more time if still not close
+        for i = 1, 2 do 
+            spamTeleport(tpPos)
+            task.wait(0.1) 
+        end
+        task.wait(0.3)
+    end
+    
+    -- Final check and attempt to open
+    if isAtChest(chest) then
+        keypress(E_KEY)
+        task.wait(HOLD_TIME)
+        keyrelease(E_KEY)
+        task.wait(0.5) -- Wait for chest to open/loot
+        return true
+    end
+    
     return false
 end
 
 local function goToReturn()
     if isAtReturn() then return end
-    spamTeleport(Vector3.new(RETURN_X, RETURN_Y, RETURN_Z))
-    task.wait(0.1)
-    if not isAtReturn() then
-        spamTeleport(Vector3.new(RETURN_X, RETURN_Y, RETURN_Z))
+    local returnPos = Vector3.new(RETURN_X, RETURN_Y, RETURN_Z)
+    for i = 1, 10 do
+        spamTeleport(returnPos)
+        task.wait(0.1)
+        if isAtReturn() then break end
     end
 end
 
+-- ── Main loot loop ────────────────────────────────────────────────
+
 local function startLooting()
     lootedChests = {}
+    local lastNotifyTime = 0
 
     while chestLooting do
         local allChests = getAllChests()
@@ -119,7 +164,8 @@ local function startLooting()
 
         local todo = {}
         for _, chest in ipairs(allChests) do
-            if not lootedChests[getChestId(chest)] then
+            local chestId = getChestId(chest)
+            if not lootedChests[chestId] and not skippedChests[chestId] then
                 table.insert(todo, chest)
             end
         end
@@ -127,13 +173,31 @@ local function startLooting()
         if #todo == 0 then
             goToReturn()
             lootedChests = {}
+            skippedChests = {}
+            hasNotifiedSkip = false
+            Win:Notify("All chests collected, waiting 120 seconds...", "WESTERN", 3)
             local waitStart = os.clock()
             while chestLooting and os.clock() - waitStart < LOOP_DELAY do
                 task.wait(1)
+                local remaining = math.ceil(LOOP_DELAY - (os.clock() - waitStart))
+                if remaining % 30 == 0 and remaining > 0 then
+                    Win:Notify("Waiting " .. remaining .. " seconds...", "WESTERN", 2)
+                end
             end
         else
+            local skipCount = 0
             for _, chest in ipairs(todo) do
                 if not chestLooting then break end
+                if isOtherPlayerNearChest(chest) then
+                    skipCount = skipCount + 1
+                    local chestId = getChestId(chest)
+                    skippedChests[chestId] = true
+                    if not hasNotifiedSkip and skipCount == 1 then
+                        Win:Notify("Skipping chests - players nearby", "WESTERN", 2)
+                        hasNotifiedSkip = true
+                    end
+                    continue
+                end
                 local id = getChestId(chest)
                 local ok = lootChest(chest)
                 if ok then lootedChests[id] = true end
@@ -142,13 +206,9 @@ local function startLooting()
     end
 end
 
-local Win = GalaxLib:CreateWindow({
-    Title   = "Skid bridger: WESTERN",
-    Size    = Vector2.new(520, 400),
-    MenuKey = 0x70,
-})
+-- ── UI ────────────────────────────────────────────────────────────
 
-local AutoTab = Win:AddTab("Automatic")
+local AutoTab  = Win:AddTab("Automatic")
 local ChestSec = AutoTab:AddSection("Auto Chest")
 
 ChestSec:AddToggle("Auto Chest", false, function(v)
@@ -162,4 +222,5 @@ ChestSec:AddToggle("Auto Chest", false, function(v)
     end
 end)
 
-Win:Notify("Skid bridger: WESTERN Loaded!", "Skid bridger: WESTERN", 3)
+Win:LoadConfig(true, false)
+Win:Notify("Script loaded", "WESTERN", 3)
