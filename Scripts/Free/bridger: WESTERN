@@ -143,7 +143,7 @@ local function startLooting()
 end
 
 local Win = GalaxLib:CreateWindow({
-    Title   = "Chest Looter",
+    Title   = "Skid bridger: WESTERN",
     Size    = Vector2.new(520, 400),
     MenuKey = 0x70,
 })
@@ -154,12 +154,12 @@ local ChestSec = AutoTab:AddSection("Auto Chest")
 ChestSec:AddToggle("Auto Chest", false, function(v)
     chestLooting = v
     if v then
-        Win:Notify("Auto Chest ON", "Chest Looter", 2)
+        Win:Notify("Auto Chest ON", "Skid bridger: WESTERN", 2)
         task.spawn(startLooting)
     else
-        Win:Notify("Auto Chest OFF", "Chest Looter", 2)
+        Win:Notify("Auto Chest OFF", "Skid bridger: WESTERN", 2)
         keyrelease(E_KEY)
     end
 end)
 
-Win:Notify("Chest Looter Loaded!", "Chest Looter", 3)
+Win:Notify("Skid bridger: WESTERN Loaded!", "Skid bridger: WESTERN", 3)
