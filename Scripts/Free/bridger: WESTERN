@@ -1,0 +1,165 @@
+loadstring(game:HttpGet("https://raw.githubusercontent.com/minudoindo-dotcom/Galax/refs/heads/main/Lib/Beta/Galax.lua"))()
+
+local E_KEY = 0x45
+local HOLD_TIME = 2.5
+local LOOP_DELAY = 1000
+local LOOT_RANGE = 8
+local RETURN_RANGE = 10
+
+local RETURN_X = -8557.8
+local RETURN_Y = 67.4
+local RETURN_Z = -3090.7
+
+local chestLooting = false
+local lootedChests = {}
+
+local function getAllChests()
+    local chests = {}
+    local folder = workspace:FindFirstChild("Chests")
+    if not folder then return chests end
+    for _, obj in ipairs(folder:GetChildren()) do
+        if obj.Name == "ChestBox" then
+            table.insert(chests, obj)
+        end
+    end
+    return chests
+end
+
+local function getChestPosition(chest)
+    local part = chest:FindFirstChild("HumanoidRootPart")
+        or chest:FindFirstChildWhichIsA("BasePart")
+    return part and part.Position or nil
+end
+
+local function getPlayerPosition()
+    local char = game.Players.LocalPlayer.Character
+    if not char then return nil end
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    return hrp and hrp.Position or nil
+end
+
+local function getDist(a, b)
+    if not a or not b then return math.huge end
+    local d = a - b
+    return math.sqrt(d.X^2 + d.Y^2 + d.Z^2)
+end
+
+local function spamTeleport(pos)
+    local char = game.Players.LocalPlayer.Character
+    if not char then return false end
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    if not hrp then return false end
+    for i = 1, 5 do
+        hrp.Position = pos
+        pcall(function() hrp.AssemblyLinearVelocity = Vector3.new(0,0,0) end)
+    end
+    return true
+end
+
+local function isAtChest(chest)
+    local playerPos = getPlayerPosition()
+    local chestPos = getChestPosition(chest)
+    return getDist(playerPos, chestPos) <= LOOT_RANGE
+end
+
+local function isAtReturn()
+    local playerPos = getPlayerPosition()
+    local returnPos = Vector3.new(RETURN_X, RETURN_Y, RETURN_Z)
+    return getDist(playerPos, returnPos) <= RETURN_RANGE
+end
+
+local function getChestId(chest)
+    local pos = getChestPosition(chest)
+    if pos then return string.format("%.1f,%.1f", pos.X, pos.Z) end
+    return chest.Name
+end
+
+local function lootChest(chest)
+    local pos = getChestPosition(chest)
+    if not pos then return false end
+    local tpPos = Vector3.new(pos.X, pos.Y + 3, pos.Z)
+
+    if not isAtChest(chest) then
+        for i = 1, 3 do spamTeleport(tpPos) end
+        task.wait(0.1)
+    end
+
+    for attempts = 1, 15 do
+        if isAtChest(chest) then
+            keypress(E_KEY)
+            task.wait(HOLD_TIME)
+            keyrelease(E_KEY)
+            return true
+        end
+        spamTeleport(tpPos)
+        task.wait(0.05)
+    end
+    return false
+end
+
+local function goToReturn()
+    if isAtReturn() then return end
+    spamTeleport(Vector3.new(RETURN_X, RETURN_Y, RETURN_Z))
+    task.wait(0.1)
+    if not isAtReturn() then
+        spamTeleport(Vector3.new(RETURN_X, RETURN_Y, RETURN_Z))
+    end
+end
+
+local function startLooting()
+    lootedChests = {}
+
+    while chestLooting do
+        local allChests = getAllChests()
+
+        if #allChests == 0 then
+            task.wait(1)
+            continue
+        end
+
+        local todo = {}
+        for _, chest in ipairs(allChests) do
+            if not lootedChests[getChestId(chest)] then
+                table.insert(todo, chest)
+            end
+        end
+
+        if #todo == 0 then
+            goToReturn()
+            lootedChests = {}
+            local waitStart = os.clock()
+            while chestLooting and os.clock() - waitStart < LOOP_DELAY do
+                task.wait(1)
+            end
+        else
+            for _, chest in ipairs(todo) do
+                if not chestLooting then break end
+                local id = getChestId(chest)
+                local ok = lootChest(chest)
+                if ok then lootedChests[id] = true end
+            end
+        end
+    end
+end
+
+local Win = GalaxLib:CreateWindow({
+    Title   = "Chest Looter",
+    Size    = Vector2.new(520, 400),
+    MenuKey = 0x70,
+})
+
+local AutoTab = Win:AddTab("Automatic")
+local ChestSec = AutoTab:AddSection("Auto Chest")
+
+ChestSec:AddToggle("Auto Chest", false, function(v)
+    chestLooting = v
+    if v then
+        Win:Notify("Auto Chest ON", "Chest Looter", 2)
+        task.spawn(startLooting)
+    else
+        Win:Notify("Auto Chest OFF", "Chest Looter", 2)
+        keyrelease(E_KEY)
+    end
+end)
+
+Win:Notify("Chest Looter Loaded!", "Chest Looter", 3)
