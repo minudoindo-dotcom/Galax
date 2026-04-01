@@ -41,6 +41,7 @@ GalaxHubWhitelist = {
     "vuxito",
     "pinkmasha111",
     "LaufeyDroppedMusic",
+    "dr30d",
 
     -- Add more users below this line!
 }
