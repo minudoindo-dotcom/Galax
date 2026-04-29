@@ -249,8 +249,8 @@ function GalaxLib:CreateWindow(opts)
     -- ── AddTab / AddSection / Widgets ────────────────────────
     function WIN:AddTab(name)
         local TAB={_name=name,_sections={},_win=self,scroll=0,maxScroll=0}
-        function TAB:AddSection(sname)
-            local SEC={_name=sname,_widgets={},_win=self._win}
+        function TAB:AddSection(sname, side)
+            local SEC={_name=sname,_widgets={},_win=self._win, _side=side}
             local function reg(item) table.insert(SEC._widgets,item) end
 
             function SEC:AddToggle(label,default,cb,keybind)
@@ -880,12 +880,16 @@ function GalaxLib:CreateWindow(opts)
 
         -- ── SECTION CONTENT (with section opacity + slide) ─────
         local contTop=topH+tabH+10; local padX=10
-        local colW=(sz.X-padX*3)/2; local colYL=0; local colYR=0
+        local colYL, colYR = 0, 0
         local minViewY = contTop; local maxViewY = sz.Y - 10
         local slideOffset = 0
 
         for si,sec in ipairs(self._openTab._sections) do
-            local isLeft=(si%2==1)
+            local isLeft = true
+            if sec._side == "Left" then isLeft = true
+            elseif sec._side == "Right" then isLeft = false
+            else isLeft = (si%2 == 1) end
+            
             local sx=isLeft and padX or (padX*2+colW)
             local sy=isLeft and colYL or colYR
             local sid="m_sec_"..si
