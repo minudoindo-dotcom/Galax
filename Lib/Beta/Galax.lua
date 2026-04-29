@@ -880,6 +880,7 @@ function GalaxLib:CreateWindow(opts)
 
         -- ── SECTION CONTENT (with section opacity + slide) ─────
         local contTop=topH+tabH+10; local padX=10
+        local colW = (sz.X - padX * 3) / 2
         local colYL, colYR = 0, 0
         local minViewY = contTop; local maxViewY = sz.Y - 10
         local slideOffset = 0
